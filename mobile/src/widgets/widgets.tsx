@@ -2,6 +2,9 @@
 // log), Log an expense (opens straight into typing or talking), and Last 7 days.
 // These aren't React Native views: react-native-android-widget turns them into Android RemoteViews,
 // so only its Flex/Text/Svg widgets and a subset of styles work. SVG is drawn to a bitmap.
+// The React Compiler would add hooks (a memo cache) to these components, and widgets can't run hooks.
+"use no memo";
+
 import { FlexWidget, SvgWidget, TextWidget, type WidgetRepresentation } from "react-native-android-widget";
 
 import { formatPaise } from "@/lib/money";

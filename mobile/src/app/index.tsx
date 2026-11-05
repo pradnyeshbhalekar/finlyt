@@ -47,6 +47,7 @@ import {
   useStats,
 } from "@/lib/queries";
 import { askSmsPermission, smsPermitted, smsSupported, syncSms } from "@/lib/sms";
+import { taps } from "@/lib/motion";
 import { refreshWidgets, scheduleWidgetRefresh } from "@/widgets/refresh";
 import { useTheme } from "@/lib/theme";
 import type { Expense, Proposal } from "@/lib/types";
@@ -88,6 +89,20 @@ export default function Home() {
   useEffect(() => {
     const sub = AppState.addEventListener("change", (state) => state === "background" && void refreshWidgets());
     return () => sub.remove();
+  }, []);
+
+  const [awake, setAwake] = useState(false);
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const unsubscribe = taps.subscribe(() => {
+      setAwake(true);
+      clearTimeout(timer);
+      timer = setTimeout(() => setAwake(false), 6000);
+    });
+    return () => {
+      unsubscribe();
+      clearTimeout(timer);
+    };
   }, []);
 
   const [reminders, setReminders] = useState<ReminderTime[]>(DEFAULT_REMINDERS);
@@ -143,8 +158,10 @@ export default function Home() {
   const owed = month.data?.open_dues_paise ?? 0;
 
   const iOwe = (balances.data?.i_owe ?? []).reduce((sum, r) => sum + r.amount_paise, 0);
-  const hour = now.getHours();
-  const restingMood: Mood = hour >= 22 || hour < 6 ? "sleepy" : "default";
+  // The coin dozes while nothing is logged today. A tap anywhere wakes it (and it jumps, see
+  // HeaderLogo); it nods off again a few seconds later if there's still nothing.
+  const nothingLogged = todays.data !== undefined && items.length === 0;
+  const restingMood: Mood = nothingLogged && !awake ? "sleepy" : "default";
 
   async function save(proposal: Proposal, words: string) {
     const body = proposalToCommit(proposal, words.slice(0, 4000) || null);

@@ -148,6 +148,28 @@ The user wants to stay free. Gemini stays primary; **Groq is the fallback** (`fi
 - **Not yet active:** the user hasn't made a Groq key. When they do: put it in the root `.env` → copy to `backend/.env` → `printf %s "$KEY" | npx vercel@65.11.0 env add GROQ_API_KEY production --force --sensitive` → deploy (ask first). Then run the casual-input smoke test against Groq alone to check its Hinglish accuracy.
 - Free-tier notes (Nov 2026; Google no longer publishes numbers, so check AI Studio): Flash-Lite about 500 requests/day; Flash varies. Groq `gpt-oss-120b` about 1,000 requests/day and 200k tokens/day (about 80 Finlyt calls).
 
+## TODO: Ask Finlyt chat history, kept 10 days (user request, 2026-11-05)
+
+Save Ask Finlyt chats for at least 10 days, so the user can look back at an answer instead of asking again (which also spends no AI quota). The interface should feel like Claude's.
+
+**Backend**
+- Tables:
+  - `ask_threads`: id, user_id, title, created_at, updated_at.
+  - `ask_messages`: id, thread_id, role (`user`/`finlyt`), text, model, tools_used (JSON), created_at.
+  - Add an Alembic migration.
+- `POST /api/ask` takes an optional `thread_id`. Without one it creates a thread, titled from the first question (trimmed to ~40 chars, or a few words from the model on the same call). It stores both turns and returns `thread_id`. The server loads earlier turns from the DB instead of the client resending them.
+- `GET /api/ask/threads` returns id, title, updated_at and the last message preview, newest first. `GET /api/ask/threads/<id>` returns the messages. `DELETE /api/ask/threads/<id>`.
+- **Retention:** delete threads not updated for 10 days. Simplest is a cleanup query at the start of each `/api/ask` and `/threads` call. A Vercel cron is the other option. Keep the number in one setting (`ASK_KEEP_DAYS=10`).
+- Tests: thread creation and continuation, user scoping, retention cutoff.
+
+**App (like Claude)**
+- Ask opens on a new chat with suggestion chips, as now.
+- A history icon in the header opens a sheet or drawer with past chats, grouped **Today / Yesterday / Previous 7 days / Older**. Each row shows the title and a time, and there's a search box at the top.
+- Tap a chat to reopen it and keep asking. Swipe or long-press to delete. A **New chat** button sits at the top.
+- Footer note: "Chats are kept for 10 days."
+- Long-press a message to copy it. Show a small "Looked at: spending, people" line under answers from `tools_used`.
+- Questions typed on Home (`?q=`) start a new thread.
+
 ## History of everything, money I owe, MCP + Ask Finlyt (2026-11-05, ~23:30) — DEPLOYED
 
 - **Money I owe** (`debts` table, migration `b7e2d4c9a1f3`; `services/debts.py`, `services/people.py`). A debt isn't spending; paying it back creates an expense linked to the payment ("Movie ticket · paid back Aaditya"), so it's counted once, when the money leaves.
@@ -178,7 +200,7 @@ The user wants to stay free. Gemini stays primary; **Groq is the fallback** (`fi
   - Settings → Home screen widgets shows live previews (`WidgetPreview`); tapping one calls `requestPinWidget`.
   - The picker images come from `scripts/render-widget-previews.js` (needs `@resvg/resvg-js`).
   - **Dev-build caveat:** with the app closed, the 30-min background refresh runs JS from Metro, so it only works on the same Wi-Fi as the Mac. A release APK bundles the JS.
-- **Paused here (user said "close everything"):** the widget APK build was stopped before it finished, and Metro, Gradle, the test Postgres and adb are all shut down. The phone still has the old native build, which lacks the widget module, so the new JS will fail there. **Next:** `cd mobile/android && JAVA_HOME=$(/usr/libexec/java_home -v 17) ./gradlew assembleDebug -PreactNativeArchitectures=arm64-v8a`, reconnect wireless adb (`adb mdns services`, `adb connect`), `adb install -r app/build/outputs/apk/debug/app-debug.apk`, start Metro (`npx expo start --dev-client`), then add a widget from Settings and check it. The entry sheet, Ask icon and widgets are uncommitted (after `982c713`).
+- **Release APK installed (2026-11-05 23:48):** `cd mobile/android && ./gradlew assembleRelease -PreactNativeArchitectures=arm64-v8a` (9 min, 42 MB at `app/build/outputs/apk/release/app-release.apk`), installed with `adb install -r` over the debug build. It's signed with the debug keystore, so Google sign-in (same SHA-1) and saved data carry over. It runs without Metro, so widgets refresh anywhere. For JS changes during development, either rebuild the release APK or go back to the debug build with Metro. Widgets aren't yet checked on the phone.
 - **Still open:** Metro logs `[splash] aim {"target":null,...}`, so the header never reports its rect and the splash fades instead of flying to the header.
 
 ## Lessons from this session (non-obvious)
