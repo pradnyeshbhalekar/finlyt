@@ -1,0 +1,63 @@
+{
+  "expo": {
+    "name": "Finlyt",
+    "slug": "finlyt",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
+    "scheme": "finlyt",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "bundleIdentifier": "com.finlyt.app"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#3355FF",
+        "foregroundImage": "./assets/images/android-icon-foreground.png",
+        "monochromeImage": "./assets/images/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false,
+      "package": "com.finlyt.app"
+    },
+    "web": {
+      "output": "static",
+      "favicon": "./assets/images/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#3355FF",
+          "image": "./assets/images/splash-icon.png",
+          "imageWidth": 120
+        }
+      ],
+      "expo-secure-store",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/notification-icon.png",
+          "color": "#3355FF"
+        }
+      ],
+      [
+        "@react-native-google-signin/google-signin",
+        {
+          "iosUrlScheme": "com.googleusercontent.apps.finlyt-android-only"
+        }
+      ],
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "Finlyt records your voice notes so Gemini can turn them into expenses.",
+          "enableBackgroundPlayback": false
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true,
+      "reactCompiler": true
+    }
+  }
+}
