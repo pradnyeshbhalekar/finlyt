@@ -1,7 +1,7 @@
 // Home: today's check-in. Type (or say) what you spent at the bottom; Gemini turns it into
 // entries that are saved straight away or shown for a quick check, per Settings.
 import { router } from "expo-router";
-import { ChevronRight, CircleAlert, Settings, Undo2 } from "lucide-react-native";
+import { ChevronRight, CircleAlert, Settings, Sparkles, Target, Undo2 } from "lucide-react-native";
 import { useEffect, useState } from "react";
 import { Alert, AppState, Pressable, RefreshControl, ScrollView, View } from "react-native";
 
@@ -14,7 +14,15 @@ import { ProposalCard } from "@/components/proposal-card";
 import { SmsPermissionCard, ToLog } from "@/components/to-log";
 import { Icon, IconButton, Screen, SectionLabel, Txt } from "@/components/ui";
 import { isoDate, startOfMonth } from "@/lib/dates";
-import { entryCount, hasIssues, proposalToCommit, savedMessage } from "@/lib/log";
+import {
+  entryCount,
+  hasIssues,
+  isUndoable,
+  looksLikeQuestion,
+  matchedMessage,
+  proposalToCommit,
+  savedMessage,
+} from "@/lib/log";
 import { logDraft, useLogDraft } from "@/lib/log-draft";
 import { formatPaise } from "@/lib/money";
 import {
@@ -25,6 +33,7 @@ import {
 } from "@/lib/notifications";
 import { usePrefs } from "@/lib/prefs";
 import {
+  useBalances,
   useCommitLog,
   useDeleteExpense,
   useExpenses,
@@ -32,6 +41,7 @@ import {
   usePendingTxns,
   usePlan,
   useProposeLog,
+  useRefreshMoney,
   useResolveTxn,
   useStats,
 } from "@/lib/queries";
@@ -64,6 +74,8 @@ export default function Home() {
   const propose = useProposeLog();
   const commit = useCommitLog();
   const remove = useDeleteExpense();
+  const balances = useBalances();
+  const refreshMoney = useRefreshMoney();
 
   const [reminders, setReminders] = useState<ReminderTime[]>(DEFAULT_REMINDERS);
   const [example] = useState(() => EXAMPLES[Math.floor(Math.random() * EXAMPLES.length)]);
@@ -79,7 +91,14 @@ export default function Home() {
     if (!smsAllowed || !filters) return;
     const run = () =>
       void syncSms(filters)
-        .then(() => txns.refetch())
+        .then(async ({ matched }) => {
+          if (matched.length === 0) {
+            await txns.refetch();
+            return;
+          }
+          logDraft.saved({ message: matchedMessage(matched), expenseIds: [], input: "", questions: [], undoable: false });
+          await refreshMoney();
+        })
         .catch((e: Error) => console.warn("[sms] sync failed", e));
     run();
     const sub = AppState.addEventListener("change", (state) => state === "active" && run());
@@ -109,6 +128,8 @@ export default function Home() {
   const categories = new Map((meta.data?.categories ?? []).map((c) => [c.id, c]));
   const items = todays.data?.items ?? [];
   const owed = month.data?.open_dues_paise ?? 0;
+
+  const iOwe = (balances.data?.i_owe ?? []).reduce((sum, r) => sum + r.amount_paise, 0);
   const hour = now.getHours();
   const restingMood: Mood = hour >= 22 || hour < 6 ? "sleepy" : "default";
 
@@ -120,7 +141,7 @@ export default function Home() {
       expenseIds: result.expense_ids,
       input: words,
       questions: proposal.questions,
-      undoable: body.settlements.length + body.transfers.length + body.ignored.length === 0,
+      undoable: isUndoable(body),
     });
   }
 
@@ -129,6 +150,12 @@ export default function Home() {
     const { text: typed, note } = logDraft.get();
     const input = typed.trim();
     if (!input && !note) return;
+    // A question about your money ("where did it all go?") goes to Ask, not the log.
+    if (!note && looksLikeQuestion(input)) {
+      draft.setText("");
+      router.push({ pathname: "/ask", params: { q: input } });
+      return;
+    }
     draft.notice(null);
     try {
       const picked = logDraft.get().txn;
@@ -196,8 +223,12 @@ export default function Home() {
     <Screen>
       <View className="flex-1">
         <View className="flex-row items-center justify-between pl-5 pr-3 pt-2">
-          <HeaderLogo height={30} mood={headerMood} />
-          <IconButton icon={Settings} label="Settings" onPress={() => router.push("/settings")} />
+          <HeaderLogo height={30} mood={headerMood} splashTarget />
+          <View className="flex-row">
+            <IconButton icon={Sparkles} label="Ask Finlyt" onPress={() => router.push("/ask")} />
+            <IconButton icon={Target} label="Plan" onPress={() => router.push("/plan")} />
+            <IconButton icon={Settings} label="Settings" onPress={() => router.push("/settings")} />
+          </View>
         </View>
 
         <ScrollView
@@ -231,6 +262,14 @@ export default function Home() {
                 <Txt tone="accent" className="text-sm">
                   {"  ·  "}
                   {formatPaise(owed)} owed to you
+                </Txt>
+              </Pressable>
+            ) : null}
+            {iOwe > 0 ? (
+              <Pressable onPress={() => router.push("/owed")} hitSlop={6}>
+                <Txt tone="muted" className="text-sm">
+                  {"  ·  "}
+                  you owe {formatPaise(iOwe)}
                 </Txt>
               </Pressable>
             ) : null}
@@ -284,6 +323,7 @@ export default function Home() {
                 expense={e}
                 accounts={accounts}
                 categories={categories}
+                onPress={() => router.push({ pathname: "/expense/[id]", params: { id: String(e.id) } })}
                 onLongPress={() => confirmDelete(e)}
               />
             ))}

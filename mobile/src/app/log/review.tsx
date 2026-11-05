@@ -10,7 +10,7 @@ import { KeyboardAware } from "@/components/keyboard";
 import { categoryIcon } from "@/components/category-icon";
 import { Button, Chip, Icon, SectionLabel, Toggle, Txt } from "@/components/ui";
 import { dayLabel, isoDate, timeLabel } from "@/lib/dates";
-import { savedMessage } from "@/lib/log";
+import { isUndoable, savedMessage } from "@/lib/log";
 import { logDraft, useLogDraft } from "@/lib/log-draft";
 import { formatPaise, parseRupees } from "@/lib/money";
 import { useCommitLog, useMeta } from "@/lib/queries";
@@ -91,6 +91,19 @@ export default function Review() {
       })),
       transfers: proposal.transfers.map((t) => t.bank_txn_id),
       ignored: proposal.ignored.map((t) => t.bank_txn_id),
+      // Owing and paying back aren't edited here either.
+      debts: (proposal.debts ?? []).map((d) => ({
+        person_name: d.person_name,
+        amount_paise: d.amount_paise,
+        description: d.description,
+        category_id: d.category_id,
+        note_raw: input.slice(0, 4000) || null,
+      })),
+      repayments: (proposal.repayments ?? []).map((r) => ({
+        person_name: r.person_name,
+        amount_paise: r.amount_paise,
+        bank_txn_id: r.bank_txn_id,
+      })),
     };
     for (const e of expenses.filter((x) => x.include)) {
       const name = e.description.trim() || "this entry";
@@ -116,7 +129,13 @@ export default function Review() {
         note_raw: input.slice(0, 4000) || null,
       });
     }
-    const count = body.expenses.length + body.settlements.length + body.transfers.length + body.ignored.length;
+    const count =
+      body.expenses.length +
+      body.settlements.length +
+      body.transfers.length +
+      body.ignored.length +
+      (body.debts?.length ?? 0) +
+      (body.repayments?.length ?? 0);
     return count === 0 ? "Everything is switched off, so there's nothing to save." : body;
   }
 
@@ -136,7 +155,7 @@ export default function Review() {
         expenseIds: result.expense_ids,
         input,
         questions: [],
-        undoable: body.settlements.length + body.transfers.length + body.ignored.length === 0,
+        undoable: isUndoable(body),
       });
     } catch (e) {
       setError((e as Error).message);

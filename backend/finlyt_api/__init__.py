@@ -12,7 +12,7 @@ from .cli import register_cli
 from .config import Settings
 from .errors import register_error_handlers
 from .routes import auth as auth_routes
-from .routes import expenses, health, log, meta, plan, sms, stats
+from .routes import activity, ask, expenses, health, log, mcp, meta, plan, sms, stats
 
 
 def create_app(settings: Settings | None = None) -> Flask:
@@ -34,7 +34,7 @@ def create_app(settings: Settings | None = None) -> Flask:
     db.init_app(app, engine)
     register_auth(app)
     register_error_handlers(app)
-    for module in (health, auth_routes, meta, expenses, stats, log, plan, sms):
+    for module in (health, auth_routes, meta, expenses, stats, log, plan, sms, activity, ask, mcp):
         app.register_blueprint(module.bp, url_prefix="/api")
     register_cli(app)
     return app

@@ -107,6 +107,41 @@ class SettlementIn(_In):
         return self
 
 
+class DebtIn(_In):
+    """Money I owe someone (they paid for me). Give an existing person_id or a name."""
+
+    person_id: int | None = None
+    person_name: str | None = Field(default=None, min_length=1, max_length=64)
+    amount_paise: int = Field(gt=0)
+    description: str = Field(min_length=1, max_length=200)
+    category_id: int | None = None
+    occurred_at: datetime | None = None
+    note_raw: str | None = Field(default=None, max_length=4000)
+
+    @model_validator(mode="after")
+    def _exactly_one_person(self) -> DebtIn:
+        if (self.person_id is None) == (self.person_name is None):
+            raise ValueError("give exactly one of person_id or person_name")
+        return self
+
+
+class RepayIn(_In):
+    """Me paying back what I owed: by a UPI debit (bank_txn_id) or cash/another account."""
+
+    person_id: int | None = None
+    person_name: str | None = Field(default=None, min_length=1, max_length=64)
+    amount_paise: int = Field(gt=0)
+    bank_txn_id: int | None = None
+    account_id: int | None = None
+    paid_at: datetime | None = None
+
+    @model_validator(mode="after")
+    def _exactly_one_person(self) -> RepayIn:
+        if (self.person_id is None) == (self.person_name is None):
+            raise ValueError("give exactly one of person_id or person_name")
+        return self
+
+
 class ProposeIn(_In):
     """JSON form of POST /api/log/propose (text only). Voice notes come as multipart."""
 
@@ -121,16 +156,21 @@ class LogCommitIn(_In):
     settlements: list[SettlementIn] = Field(default_factory=list, max_length=20)
     transfers: list[int] = Field(default_factory=list, max_length=60)
     ignored: list[int] = Field(default_factory=list, max_length=60)
+    debts: list[DebtIn] = Field(default_factory=list, max_length=20)
+    repayments: list[RepayIn] = Field(default_factory=list, max_length=20)
 
     @model_validator(mode="after")
     def _something_to_save(self) -> LogCommitIn:
-        if not (self.expenses or self.settlements or self.transfers or self.ignored):
+        if not (
+            self.expenses or self.settlements or self.transfers or self.ignored or self.debts or self.repayments
+        ):
             raise ValueError("nothing to save")
         if set(self.transfers) & set(self.ignored):
             raise ValueError("a transaction can't be both a transfer and ignored")
         resolved = set(self.transfers) | set(self.ignored)
         paid = {p.bank_txn_id for e in self.expenses for p in e.payments if p.bank_txn_id}
         paid |= {st.bank_txn_id for st in self.settlements if st.bank_txn_id}
+        paid |= {r.bank_txn_id for r in self.repayments if r.bank_txn_id}
         if resolved & paid:
             raise ValueError("a transaction marked as transfer or ignored is also used for a payment")
         return self

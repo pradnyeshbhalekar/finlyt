@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from flask import Blueprint, current_app, g
+from flask import Blueprint, current_app, g, request
 from sqlalchemy import select
 
 from ..auth import create_session, current_user
@@ -71,3 +71,13 @@ def logout():
     s.delete(g.auth_session)
     s.commit()
     return "", 204
+
+
+@bp.post("/auth/connect-token")
+def connect_token():
+    """A separate session for an AI assistant (an MCP client). Revoke it by signing it out."""
+    s = get_session()
+    user = current_user()
+    token = create_session(s, user, "AI assistant (MCP)")
+    s.commit()
+    return {"token": token, "mcp_url": request.host_url.rstrip("/") + "/api/mcp"}

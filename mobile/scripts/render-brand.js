@@ -28,6 +28,16 @@ const coinMono = (fill) => `
     <path fill="${fill}" d="M57.16 21.03A26 31 0 0 1 57.16 82.97A28.2 33.2 0 0 0 57.16 21.03Z"/>
   </g>`;
 
+// The bare coin in any colours (no rounded square), as on the logo canvas's no-background board.
+const coinColored = (face, rim, ring, eyes) => `
+  <g ${COIN_T}>
+    <path d="M47 21H56A26 31 0 0 1 56 83H47Z" fill="${rim}"/>
+    <ellipse cx="47" cy="52" rx="26" ry="31" fill="${face}"/>
+    <ellipse cx="47" cy="52" rx="20" ry="25" fill="none" stroke="${ring}" stroke-width="3"/>
+    <ellipse cx="40.5" cy="51" rx="5" ry="7.6" fill="${eyes}"/>
+    <ellipse cx="53.5" cy="51" rx="5" ry="7.6" fill="${eyes}"/>
+  </g>`;
+
 const svg = (viewBox, size, body) =>
   `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${viewBox}" width="${size}" height="${size}">${body}</svg>`;
 
@@ -42,6 +52,9 @@ const assets = {
   "android-icon-monochrome.png": svg(ADAPTIVE, 1024, coinMono(WHITE)),
   // Splash: the coin alone on the brand-blue splash background.
   "splash-icon.png": svg("18 18 64 64", 512, coin()),
+  // Splash like finlyt.onrender.com: blue coin on off-white (light), white coin on navy (dark).
+  "splash-icon-light.png": svg("18 18 64 64", 512, coinColored(BRAND, "#2440E6", TINT, WHITE)),
+  "splash-icon-dark.png": svg("18 18 64 64", 512, coinColored(WHITE, TINT, TINT, BRAND)),
   // Android status-bar icon: white silhouette, 96px = 24dp at xxxhdpi.
   "notification-icon.png": svg("14 14 72 72", 96, coinMono(WHITE)),
   "favicon.png": svg("0 0 100 100", 48, `<rect width="100" height="100" rx="24" fill="${BRAND}"/>${coin()}`),

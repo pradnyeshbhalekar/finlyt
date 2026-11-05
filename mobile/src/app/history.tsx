@@ -1,36 +1,74 @@
+// History: everything that happened with your money, newest first and grouped by day. Entries,
+// paybacks you received, money you owe (and paying it back), transfers, income, ignored bank
+// payments, and plan changes.
+import { router } from "expo-router";
+import {
+  ArrowDownLeft,
+  ArrowLeftRight,
+  EyeOff,
+  HandCoins,
+  Target,
+  UserRound,
+  type LucideIcon,
+} from "lucide-react-native";
 import { ActivityIndicator, Alert, SectionList, View } from "react-native";
 
 import { Coin } from "@/components/brand";
+import { CategoryBadge } from "@/components/category-icon";
 import { ExpenseRow } from "@/components/expense-row";
-import { Txt } from "@/components/ui";
-import { dayLabel, isoDate } from "@/lib/dates";
+import { Icon, Row, Txt } from "@/components/ui";
+import { dayLabel, isoDate, timeLabel } from "@/lib/dates";
 import { formatPaise } from "@/lib/money";
-import { useDeleteExpense, useExpenses, useMeta } from "@/lib/queries";
+import { useActivity, useDeleteExpense, useMeta } from "@/lib/queries";
 import { useTheme } from "@/lib/theme";
-import type { Expense } from "@/lib/types";
+import type { ActivityItem, Expense } from "@/lib/types";
 
-type DaySection = { day: string; total: number; data: Expense[] };
+type DaySection = { day: string; spent: number; data: ActivityItem[] };
 
-function groupByDay(items: Expense[]): DaySection[] {
+function groupByDay(items: ActivityItem[]): DaySection[] {
   const groups = new Map<string, DaySection>();
-  for (const expense of items) {
-    const day = isoDate(new Date(expense.occurred_at));
-    const group = groups.get(day) ?? { day, total: 0, data: [] };
-    group.total += expense.my_share_paise;
-    group.data.push(expense);
+  for (const item of items) {
+    const day = isoDate(new Date(item.at));
+    const group = groups.get(day) ?? { day, spent: 0, data: [] };
+    if (item.type === "expense") group.spent += item.expense.my_share_paise;
+    group.data.push(item);
     groups.set(day, group);
   }
   return [...groups.values()];
 }
 
+function Badge({ icon, tone = "muted" }: { icon: LucideIcon; tone?: "muted" | "accent" }) {
+  return (
+    <View className="h-10 w-10 items-center justify-center rounded-full bg-surface">
+      <Icon icon={icon} size={18} tone={tone} />
+    </View>
+  );
+}
+
+function Amount({ paise, sign = "", tone = "fg" }: { paise: number; sign?: string; tone?: "fg" | "accent" | "muted" }) {
+  return (
+    <Txt weight="semibold" tone={tone} className="text-base">
+      {sign}
+      {formatPaise(paise)}
+    </Txt>
+  );
+}
+
+const BANK: Record<string, { label: string; icon: LucideIcon }> = {
+  transfer: { label: "Transfer", icon: ArrowLeftRight },
+  income: { label: "Income", icon: ArrowDownLeft },
+  ignored: { label: "Not spending", icon: EyeOff },
+};
+
 export default function History() {
   const { colors } = useTheme();
   const meta = useMeta();
-  const list = useExpenses({ limit: 300 });
+  const feed = useActivity();
   const remove = useDeleteExpense();
 
   const accounts = new Map((meta.data?.accounts ?? []).map((a) => [a.id, a]));
   const categories = new Map((meta.data?.categories ?? []).map((c) => [c.id, c]));
+  const items = feed.data?.pages.flatMap((p) => p.items) ?? [];
 
   function confirmDelete(expense: Expense) {
     Alert.alert("Delete this entry?", `${expense.description} · ${formatPaise(expense.my_share_paise)}`, [
@@ -39,23 +77,83 @@ export default function History() {
     ]);
   }
 
+  function renderItem(item: ActivityItem) {
+    const time = timeLabel(item.at);
+    switch (item.type) {
+      case "expense":
+        return (
+          <ExpenseRow
+            expense={item.expense}
+            accounts={accounts}
+            categories={categories}
+            onPress={() => router.push({ pathname: "/expense/[id]", params: { id: String(item.expense.id) } })}
+            onLongPress={() => confirmDelete(item.expense)}
+          />
+        );
+      case "payback":
+        return (
+          <Row
+            leading={<Badge icon={HandCoins} tone="accent" />}
+            title={`${item.person} paid you back`}
+            subtitle={`${time} · ${item.method === "txn" ? "UPI" : "Cash"}${item.for.length ? ` · for ${item.for.join(", ")}` : ""}`}
+            trailing={<Amount paise={item.amount_paise} sign="+" tone="accent" />}
+          />
+        );
+      case "debt": {
+        const category = item.category_id != null ? categories.get(item.category_id)?.name : null;
+        return (
+          <Row
+            leading={category ? <CategoryBadge name={category} /> : <Badge icon={UserRound} />}
+            title={`You owe ${item.person}`}
+            subtitle={`${time} · ${item.description}${item.status === "settled" ? " · paid back" : ""}`}
+            trailing={<Amount paise={item.amount_paise} tone={item.status === "settled" ? "muted" : "fg"} />}
+          />
+        );
+      }
+      case "bank": {
+        const kind = BANK[item.status] ?? BANK.ignored;
+        const account = accounts.get(item.account_id)?.name;
+        return (
+          <Row
+            leading={<Badge icon={kind.icon} />}
+            title={`${kind.label} · ${item.name}`}
+            subtitle={[time, account].filter(Boolean).join(" · ")}
+            trailing={<Amount paise={item.amount_paise} sign={item.direction === "credit" ? "+" : ""} tone="muted" />}
+          />
+        );
+      }
+      case "plan":
+        return (
+          <Row
+            leading={<Badge icon={Target} tone="accent" />}
+            title={`New plan: ${formatPaise(item.daily_limit_paise)} a day`}
+            subtitle={item.notes ?? time}
+          />
+        );
+    }
+  }
+
   return (
     <SectionList
       className="flex-1 bg-bg"
-      sections={groupByDay(list.data?.items ?? [])}
-      keyExtractor={(e) => String(e.id)}
+      sections={groupByDay(items)}
+      keyExtractor={(item, i) => `${item.type}-${item.at}-${i}`}
       contentContainerClassName="px-2 pb-16"
       stickySectionHeadersEnabled
-      refreshing={list.isRefetching}
-      onRefresh={() => void list.refetch()}
+      refreshing={feed.isRefetching && !feed.isFetchingNextPage}
+      onRefresh={() => void feed.refetch()}
+      onEndReachedThreshold={0.4}
+      onEndReached={() => {
+        if (feed.hasNextPage && !feed.isFetchingNextPage) void feed.fetchNextPage();
+      }}
       ListHeaderComponent={
         <View className="px-3 pb-1">
           <Txt tone="muted" className="text-sm">
-            Long-press an entry to delete it.
+            Everything, newest first. Tap an entry to open it; long-press to delete.
           </Txt>
-          {list.error ? (
+          {feed.error ? (
             <Txt tone="danger" className="mt-2 text-sm">
-              {list.error.message}
+              {feed.error.message}
             </Txt>
           ) : null}
         </View>
@@ -65,27 +163,25 @@ export default function History() {
           <Txt weight="semibold" className="text-sm">
             {dayLabel(section.day)}
           </Txt>
-          <Txt tone="muted" className="text-sm">
-            {formatPaise(section.total)}
-          </Txt>
+          {section.spent > 0 ? (
+            <Txt tone="muted" className="text-sm">
+              {formatPaise(section.spent)} spent
+            </Txt>
+          ) : null}
         </View>
       )}
-      renderItem={({ item }) => (
-        <ExpenseRow
-          expense={item}
-          accounts={accounts}
-          categories={categories}
-          onLongPress={() => confirmDelete(item)}
-        />
-      )}
+      renderItem={({ item }) => renderItem(item)}
+      ListFooterComponent={
+        feed.isFetchingNextPage ? <ActivityIndicator className="mt-4" color={colors.muted} /> : undefined
+      }
       ListEmptyComponent={
-        list.isLoading ? (
+        feed.isLoading ? (
           <ActivityIndicator className="mt-10" color={colors.muted} />
         ) : (
           <View className="mt-12 items-center">
             <Coin size={56} variant="bare" mood="sleepy" />
             <Txt tone="muted" className="mt-3">
-              Nothing logged yet.
+              Nothing here yet.
             </Txt>
           </View>
         )

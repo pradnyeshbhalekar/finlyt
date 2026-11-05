@@ -15,7 +15,7 @@ Finlyt is an Android app. It reminds me to log spending three times a day and pu
 | Database | Neon Postgres in AWS Singapore. The API uses the pooled URL and migrations use the direct URL. A `dev` branch is used for local work |
 | Sign-in | Google sign-in on the phone with the native account picker. The backend verifies the Google ID token, then issues its own 90-day session token, kept in expo-secure-store. Only emails in `ALLOWED_EMAILS` can sign in |
 | Data | Every table is scoped per user, so the app can be shared later without a schema rewrite |
-| AI | Gemini Flash through `google-genai`, structured JSON output. Models are tried in order until one answers: `gemini-3.5-flash` → `gemini-3.8-flash` → `gemini-2.5-flash` (the free tier often returns 503 "high demand"). `GEMINI_MODEL` overrides the list (comma-separated) |
+| AI | Gemini Flash through `google-genai`, structured JSON output. Models are tried in order until one answers: `gemini-3.5-flash` → `gemini-3.8-flash` → `gemini-2.5-flash` (the free tier often returns 503 "high demand"). `GEMINI_MODEL` overrides the list (comma-separated). If every Gemini model fails, **Groq** (`openai/gpt-oss-120b`, free tier, `GROQ_API_KEY`) answers instead, with the same prompt, schema and checks; text only. Simple notes skip AI entirely (quick parser) |
 | Accounts | Kotak (primary, `X1234`), DNS Bank (Dombivli Nagari Sahakari Bank, `XX5678`) and Cash |
 | Splits | Store the total paid, my share and who owes me. Paybacks are matched from UPI credit SMS |
 | Input | Voice and text. Audio goes straight to Gemini, with no separate speech-to-text step |

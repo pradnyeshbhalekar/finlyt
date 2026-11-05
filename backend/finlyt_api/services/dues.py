@@ -11,6 +11,7 @@ from ..money import rupees
 from ..schemas import SettlementIn
 from ..timeutil import ensure_aware, now_utc
 from .expenses import sync_txn_statuses
+from .people import learn_alias
 
 
 def find_person(s: Session, user_id: int, name: str) -> Person | None:
@@ -103,4 +104,5 @@ def settle(s: Session, user_id: int, data: SettlementIn) -> list[Settlement]:
     s.flush()
     if txn is not None:
         sync_txn_statuses(s, [txn.id])
+        learn_alias(person, txn.counterparty)  # their next UPI payback is matched by itself
     return created

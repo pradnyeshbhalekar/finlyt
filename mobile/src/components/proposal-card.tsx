@@ -1,5 +1,5 @@
 // Gemini's reading of what you typed, shown for a one-tap check before saving.
-import { ArrowLeftRight, Check, CircleAlert, HandCoins, Pencil, X } from "lucide-react-native";
+import { ArrowLeftRight, Check, CircleAlert, HandCoins, Pencil, UserRound, X } from "lucide-react-native";
 import { View } from "react-native";
 
 import { timeLabel } from "@/lib/dates";
@@ -27,7 +27,12 @@ export function ProposalCard({
   onDiscard: () => void;
 }) {
   const count =
-    proposal.expenses.length + proposal.settlements.length + proposal.transfers.length + proposal.ignored.length;
+    proposal.expenses.length +
+    proposal.settlements.length +
+    proposal.transfers.length +
+    proposal.ignored.length +
+    (proposal.debts?.length ?? 0) +
+    (proposal.repayments?.length ?? 0);
   const txnLabel = (id: number) => proposal.txns.find((t) => t.id === id);
 
   return (
@@ -93,6 +98,49 @@ export function ProposalCard({
           </View>
           <Txt weight="semibold" className="text-base">
             {formatPaise(s.amount_paise)}
+          </Txt>
+        </View>
+      ))}
+
+      {(proposal.debts ?? []).map((d, i) => (
+        <View key={`d${i}`} className="flex-row items-center gap-3 py-2.5">
+          <View className="h-9 w-9 items-center justify-center rounded-full bg-bg">
+            <Icon icon={UserRound} size={17} tone="muted" />
+          </View>
+          <View className="flex-1">
+            <Txt weight="medium" className="text-base">
+              You owe {d.person_name}
+            </Txt>
+            <Txt tone="muted" className="text-sm">
+              {d.description} · saved as owed, counted when you pay it back
+            </Txt>
+          </View>
+          <Txt weight="semibold" className="text-base">
+            {formatPaise(d.amount_paise)}
+          </Txt>
+        </View>
+      ))}
+
+      {(proposal.repayments ?? []).map((r, i) => (
+        <View key={`r${i}`} className="flex-row items-center gap-3 py-2.5">
+          <View className="h-9 w-9 items-center justify-center rounded-full bg-bg">
+            <Icon icon={HandCoins} size={17} tone="muted" />
+          </View>
+          <View className="flex-1">
+            <Txt weight="medium" className="text-base">
+              You paid {r.person_name} back
+            </Txt>
+            <Txt tone="muted" className="text-sm">
+              {r.txn_label ? "By UPI" : "Cash"}
+            </Txt>
+            {r.issues.map((issue, j) => (
+              <Txt key={j} tone="warn" className="mt-1 text-sm">
+                {issue}
+              </Txt>
+            ))}
+          </View>
+          <Txt weight="semibold" className="text-base">
+            {formatPaise(r.amount_paise)}
           </Txt>
         </View>
       ))}

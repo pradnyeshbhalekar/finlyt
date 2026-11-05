@@ -121,7 +121,7 @@ export async function scheduleReminders(times?: ReminderTime[]): Promise<number>
     content: {
       title: "Sunday check-in",
       body: "Five minutes with Finlyt to plan the week ahead.",
-      data: { url: "/plan" },
+      data: { url: "/plan/chat" },
     },
     trigger: {
       type: Notifications.SchedulableTriggerInputTypes.WEEKLY,

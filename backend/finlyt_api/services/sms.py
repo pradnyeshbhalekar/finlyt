@@ -1,5 +1,9 @@
-"""SMS sync: store bank SMS once, parse them into pending bank transactions, and link each new
-debit to a payment already logged by hand (same account, amount and day) when there is one."""
+"""SMS sync: store bank SMS once and parse them into bank transactions. Each new one is then
+matched where it can be, so it never needs explaining:
+- a debit to a payment already logged by hand (same account, amount and IST day);
+- a debit to someone I owe exactly that much (the debt is paid off; see debts.py);
+- a credit from someone who owes me (their dues are settled).
+Whatever is left stays pending for the "To log" list."""
 
 from __future__ import annotations
 
@@ -16,6 +20,7 @@ from ..models import Account, BankTxn, Expense, ExpensePayment, SmsMessage
 from ..schemas import SmsIn
 from ..sms_parsers import display_name, parse
 from ..timeutil import IST, ensure_aware, ist_day_bounds, to_ist_iso
+from . import debts
 
 
 def identify_bank(sender: str, body: str) -> str | None:
@@ -75,6 +80,7 @@ def sync(s: Session, user_id: int, messages: list[SmsIn]) -> dict[str, Any]:
         if a.bank_code
     }
     new: list[BankTxn] = []
+    matched: list[dict] = []
     counts = {"received": len(messages), "duplicates": 0, "unparsed": 0, "linked": 0}
     for m in messages:
         body = m.body.strip()
@@ -122,11 +128,20 @@ def sync(s: Session, user_id: int, messages: list[SmsIn]) -> dict[str, Any]:
         s.add(txn)
         s.flush()
         sms.parse_status = "parsed"
-        if txn.direction == "debit" and auto_link(s, user_id, txn):
-            counts["linked"] += 1
+        if txn.direction == "debit":
+            if auto_link(s, user_id, txn):
+                counts["linked"] += 1
+            elif match := debts.auto_repay(s, user_id, txn):
+                matched.append(match)
+        elif match := debts.auto_payback(s, user_id, txn):
+            matched.append(match)
         new.append(txn)
     s.flush()
-    return {**counts, "new_txns": [txn_json(t) for t in new if t.status == "pending"]}
+    return {
+        **counts,
+        "matched": matched,
+        "new_txns": [txn_json(t) for t in new if t.status == "pending"],
+    }
 
 
 def pending(s: Session, user_id: int, days: int = 14) -> list[dict[str, Any]]:

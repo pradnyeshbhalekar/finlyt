@@ -1,66 +1,118 @@
-// Who owes you what, from the open dues on your expenses. Settling paybacks comes in phase 6;
-// for now, type "Rahul paid me back 200" on Home.
-import { ScrollView, View } from "react-native";
+// Owed: who owes you, and whom you owe, with what each amount was for. Paybacks by UPI are
+// matched from your bank SMS by themselves; for cash, just say it on Home ("Rahul gave 200 back").
+import { ActivityIndicator, ScrollView, View } from "react-native";
+import Animated, { FadeInDown } from "react-native-reanimated";
 
 import { Coin } from "@/components/brand";
 import { Row, SectionLabel, Txt } from "@/components/ui";
 import { formatPaise } from "@/lib/money";
-import { useExpenses } from "@/lib/queries";
+import { useBalances } from "@/lib/queries";
+import { useTheme } from "@/lib/theme";
+import type { Balances } from "@/lib/types";
+
+function Person({ row, tone }: { row: Balances["owed_to_me"][number]; tone: "accent" | "fg" }) {
+  return (
+    <Row
+      leading={
+        <View className="h-10 w-10 items-center justify-center rounded-full bg-surface">
+          <Txt weight="semibold" tone="muted">
+            {row.name.charAt(0).toUpperCase()}
+          </Txt>
+        </View>
+      }
+      title={row.name}
+      subtitle={row.items.map((i) => i.description).join(", ")}
+      trailing={
+        <Txt weight="semibold" tone={tone}>
+          {formatPaise(row.amount_paise)}
+        </Txt>
+      }
+    />
+  );
+}
 
 export default function Owed() {
-  const list = useExpenses({ limit: 500 });
+  const { colors } = useTheme();
+  const balances = useBalances();
+  const data = balances.data;
 
-  const byPerson = new Map<string, number>();
-  for (const expense of list.data?.items ?? []) {
-    for (const due of expense.dues) {
-      if (due.status !== "open") continue;
-      const left = due.amount_paise - due.settled_paise;
-      if (left > 0) byPerson.set(due.person_name, (byPerson.get(due.person_name) ?? 0) + left);
-    }
+  if (!data) {
+    return (
+      <View className="flex-1 items-center justify-center bg-bg px-8">
+        {balances.error ? (
+          <Txt tone="muted" className="text-center">
+            {balances.error.message}
+          </Txt>
+        ) : (
+          <ActivityIndicator color={colors.muted} />
+        )}
+      </View>
+    );
   }
-  const people = [...byPerson.entries()].sort((a, b) => b[1] - a[1]);
-  const total = people.reduce((sum, [, amount]) => sum + amount, 0);
+
+  const theyOwe = data.owed_to_me.reduce((sum, r) => sum + r.amount_paise, 0);
+  const iOwe = data.i_owe.reduce((sum, r) => sum + r.amount_paise, 0);
+
+  if (theyOwe === 0 && iOwe === 0) {
+    return (
+      <View className="flex-1 items-center justify-center bg-bg px-8">
+        <Coin size={56} variant="bare" mood="happy" />
+        <Txt tone="muted" className="mt-3 text-center">
+          All square. Nobody owes anybody.
+        </Txt>
+      </View>
+    );
+  }
 
   return (
     <ScrollView className="flex-1 bg-bg" contentContainerClassName="px-5 pb-16">
-      <Txt tone="muted" className="mt-2 text-sm">
-        Total
-      </Txt>
-      <Txt weight="bold" className="text-5xl" style={{ letterSpacing: -1 }}>
-        {formatPaise(total)}
-      </Txt>
+      <Animated.View entering={FadeInDown.duration(380)}>
+        <View className="mt-2 flex-row gap-3">
+          <View className="flex-1 rounded-3xl bg-surface p-4">
+            <Txt tone="muted" className="text-sm">
+              Owed to you
+            </Txt>
+            <Txt weight="bold" tone="accent" className="mt-1 text-2xl">
+              {formatPaise(theyOwe)}
+            </Txt>
+          </View>
+          <View className="flex-1 rounded-3xl bg-surface p-4">
+            <Txt tone="muted" className="text-sm">
+              You owe
+            </Txt>
+            <Txt weight="bold" className="mt-1 text-2xl">
+              {formatPaise(iOwe)}
+            </Txt>
+          </View>
+        </View>
+      </Animated.View>
 
-      {people.length > 0 ? (
-        <>
-          <SectionLabel className="mb-2 mt-8">People</SectionLabel>
+      {data.owed_to_me.length > 0 ? (
+        <Animated.View entering={FadeInDown.delay(80).duration(380)}>
+          <SectionLabel className="mb-1 mt-8">They owe you</SectionLabel>
           <View className="-mx-3">
-            {people.map(([name, amount]) => (
-              <Row
-                key={name}
-                leading={
-                  <View className="h-10 w-10 items-center justify-center rounded-full bg-surface">
-                    <Txt weight="semibold" tone="muted">
-                      {name.charAt(0).toUpperCase()}
-                    </Txt>
-                  </View>
-                }
-                title={name}
-                trailing={<Txt weight="semibold">{formatPaise(amount)}</Txt>}
-              />
+            {data.owed_to_me.map((row) => (
+              <Person key={row.person_id} row={row} tone="accent" />
             ))}
           </View>
-          <Txt tone="muted" className="mt-6 text-sm leading-5">
-            When someone pays you back, say so on Home, like “Rahul paid me back 200”.
-          </Txt>
-        </>
-      ) : list.isLoading ? null : (
-        <View className="mt-12 items-center">
-          <Coin size={56} variant="bare" mood="happy" />
-          <Txt tone="muted" className="mt-3">
-            Nobody owes you anything.
-          </Txt>
-        </View>
-      )}
+        </Animated.View>
+      ) : null}
+
+      {data.i_owe.length > 0 ? (
+        <Animated.View entering={FadeInDown.delay(160).duration(380)}>
+          <SectionLabel className="mb-1 mt-8">You owe them</SectionLabel>
+          <View className="-mx-3">
+            {data.i_owe.map((row) => (
+              <Person key={row.person_id} row={row} tone="fg" />
+            ))}
+          </View>
+        </Animated.View>
+      ) : null}
+
+      <Txt tone="muted" className="mt-8 text-sm leading-5">
+        UPI paybacks either way are matched from your bank SMS by themselves. For cash, just say it on
+        Home, like “Rahul gave 200 back” or “paid Aaditya his 200”.
+      </Txt>
     </ScrollView>
   );
 }

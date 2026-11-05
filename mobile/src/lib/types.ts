@@ -131,6 +131,8 @@ export type ProposedSettlement = {
 export type TxnNote = { bank_txn_id: number; txn_label: string; reason: string };
 
 export type Proposal = {
+  debts?: ProposedDebt[];
+  repayments?: ProposedRepayment[];
   transcript: string;
   questions: string[];
   txns: PendingTxn[];
@@ -142,6 +144,8 @@ export type Proposal = {
 };
 
 export type LogCommit = {
+  debts?: { person_name: string; amount_paise: number; description: string; category_id: number | null; note_raw?: string | null }[];
+  repayments?: { person_name: string; amount_paise: number; bank_txn_id: number | null }[];
   expenses: NewExpense[];
   settlements: { person_name: string; amount_paise: number; bank_txn_id: number | null }[];
   transfers: number[];
@@ -213,3 +217,63 @@ export type BankTxnItem = {
   occurred_at: string;
   status: string;
 };
+
+// ── People: owing both ways ──────────────────────────────────────────────────
+
+export type ProposedDebt = {
+  person_name: string;
+  amount_paise: number;
+  description: string;
+  category_id: number | null;
+  issues: string[];
+};
+
+export type ProposedRepayment = {
+  person_name: string;
+  amount_paise: number;
+  bank_txn_id: number | null;
+  txn_label: string | null;
+  owed_paise: number;
+  issues: string[];
+};
+
+export type Balances = {
+  owed_to_me: { person_id: number; name: string; amount_paise: number; items: { description: string; amount_paise: number }[] }[];
+  i_owe: { person_id: number; name: string; amount_paise: number; items: { description: string; amount_paise: number }[] }[];
+};
+
+/** An SMS payment Finlyt matched by itself: me paying someone back, or them paying me. */
+export type SmsMatch = { kind: "repaid" | "payback"; person: string; amount_paise: number; txn_id: number };
+
+// ── History: everything, newest first ────────────────────────────────────────
+
+export type ActivityItem = { at: string } & (
+  | { type: "expense"; expense: Expense }
+  | { type: "payback"; person: string; amount_paise: number; method: string; for: string[] }
+  | {
+      type: "debt";
+      id: number;
+      person: string;
+      amount_paise: number;
+      description: string;
+      category_id: number | null;
+      status: "open" | "settled";
+      settled_at: string | null;
+    }
+  | {
+      type: "bank";
+      id: number;
+      status: "transfer" | "income" | "ignored";
+      direction: "debit" | "credit";
+      name: string;
+      amount_paise: number;
+      account_id: number;
+    }
+  | { type: "plan"; daily_limit_paise: number; notes: string | null }
+);
+
+export type ActivityPage = { items: ActivityItem[]; next_before: string | null };
+
+// ── Ask Finlyt ───────────────────────────────────────────────────────────────
+
+export type AskTurn = { reply: string; model: string; tools_used: string[] };

@@ -5,7 +5,7 @@ import { PermissionsAndroid, Platform } from "react-native";
 
 import { SmsReader, type InboxMessage } from "../../modules/sms-reader";
 import { api } from "./api";
-import type { BankTxnItem, SmsFilter } from "./types";
+import type { BankTxnItem, SmsFilter, SmsMatch } from "./types";
 
 const CURSOR_KEY = "finlyt.smsCursor";
 const BATCH = 200;
@@ -51,22 +51,27 @@ function startOfToday(): number {
   return d.getTime();
 }
 
-let running: Promise<number> | null = null;
+export type SyncResult = { found: number; matched: SmsMatch[] };
+let running: Promise<SyncResult> | null = null;
 
-/** Upload bank SMS that arrived since the last sync. Returns how many new payments to log. */
-export function syncSms(filters: SmsFilter[]): Promise<number> {
-  if (!smsSupported() || !smsPermitted() || filters.length === 0 || !SmsReader) return Promise.resolve(0);
+/** Upload bank SMS that arrived since the last sync: how many new payments to log, and which ones
+ * Finlyt matched by itself (paying someone back, or them paying you). */
+export function syncSms(filters: SmsFilter[]): Promise<SyncResult> {
+  if (!smsSupported() || !smsPermitted() || filters.length === 0 || !SmsReader) {
+    return Promise.resolve({ found: 0, matched: [] });
+  }
   const reader = SmsReader;
   running ??= (async () => {
     const saved = await SecureStore.getItemAsync(CURSOR_KEY);
     let cursor = saved ? Number(saved) : startOfToday(); // first sync: today's messages
     let found = 0;
+    const matched: SmsMatch[] = [];
     for (let round = 0; round < 10; round++) {
       const batch = await reader.readInbox(cursor, BATCH);
       if (batch.length === 0) break;
       const bank = batch.filter((m) => isBankSms(m, filters));
       if (bank.length > 0) {
-        const result = await api<{ new_txns: BankTxnItem[] }>("/api/sms/sync", {
+        const result = await api<{ new_txns: BankTxnItem[]; matched?: SmsMatch[] }>("/api/sms/sync", {
           method: "POST",
           body: {
             messages: bank.map((m) => ({
@@ -78,13 +83,14 @@ export function syncSms(filters: SmsFilter[]): Promise<number> {
           },
         });
         found += result.new_txns.length;
+        matched.push(...(result.matched ?? []));
       }
       // Only move the cursor once the batch is safely on the server.
       cursor = batch[batch.length - 1].date;
       await SecureStore.setItemAsync(CURSOR_KEY, String(cursor));
       if (batch.length < BATCH) break;
     }
-    return found;
+    return { found, matched };
   })().finally(() => {
     running = null;
   });

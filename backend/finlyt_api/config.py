@@ -25,6 +25,8 @@ class Settings:
     allowed_emails: frozenset[str] = frozenset()
     gemini_api_key: str | None = None
     gemini_model: str | None = None
+    groq_api_key: str | None = None
+    groq_model: str | None = None
     serverless: bool = False
 
     @classmethod
@@ -36,6 +38,8 @@ class Settings:
             allowed_emails=_split_emails(env("ALLOWED_EMAILS")),
             gemini_api_key=env("GEMINI_API_KEY") or None,
             gemini_model=env("GEMINI_MODEL") or None,
+            groq_api_key=env("GROQ_API_KEY") or None,
+            groq_model=env("GROQ_MODEL") or None,
             # Vercel sets VERCEL=1 in deployments.
             serverless=bool(env("VERCEL")),
         )

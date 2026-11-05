@@ -8,20 +8,21 @@ flagged in `issues`, so the person reviewing sees it instead of it being silentl
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Any
 
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from ..errors import ApiError
-from ..gemini import GExpense, GProposal, GSettlement, GTxnNote
-from ..models import Account, BankTxn, Category, Person
+from ..gemini import GExpense, GOwe, GProposal, GRepay, GSettlement, GTxnNote
+from ..models import Account, BankTxn, Category, Debt, Person
 from ..money import rupees, to_paise
 from ..schemas import LogCommitIn
 from ..timeutil import IST, now_utc, to_ist_iso
 from .dues import find_person, open_dues, outstanding, settle
+from . import debts
 from .expenses import create_expense
 
 RECENT_TXN_DAYS = 14
@@ -42,7 +43,11 @@ is ONE auto ride of 150, paid 120 one way and 30 in cash.
 - "split X with A and B" with no amounts means equal shares: each of us pays X/3, and A and B \
 each owe me X/3. "paid for rahul" or "lent rahul 500" means my_share is 0 and Rahul owes the \
 whole amount.
-- Money I owe someone else isn't tracked. Leave it out.
+- Someone paying for me means I owe them ("aaditya ne movie ka 200 diya", "aaditya paid for my \
+ticket, I owe him 200"): put it in i_owe, not expenses.
+- Me paying someone back what I owed ("aaditya ko 200 wapas diye", "paid aaditya back 200") goes \
+in repaid, with txn set to the debit transaction label it went out as, or null for cash. It is \
+not a new expense.
 - Brand or place names (Zomato, Swiggy, DMart, Rapido, Uber, Blinkit, Zepto) are where I spent, \
 and help pick the category.
 
@@ -81,6 +86,7 @@ class LogContext:
     categories: list[Category]
     people: list[Person]
     txns: list[BankTxn]
+    debts: list[Debt] = field(default_factory=list)
 
     @property
     def labels(self) -> dict[str, BankTxn]:
@@ -127,7 +133,15 @@ def load_context(s: Session, user_id: int, txn_ids: list[int] | None) -> LogCont
     else:
         since = now_utc() - timedelta(days=RECENT_TXN_DAYS)
         txns = list(s.scalars(stmt.where(BankTxn.occurred_at >= since).limit(MAX_TXNS)))
-    return LogContext(accounts, categories, people, txns)
+    debts = list(
+        s.scalars(
+            select(Debt)
+            .where(Debt.user_id == user_id, Debt.status == "open")
+            .options(selectinload(Debt.person))
+            .order_by(Debt.occurred_at)
+        )
+    )
+    return LogContext(accounts, categories, people, txns, debts)
 
 
 def _when(dt: datetime) -> str:
@@ -146,6 +160,10 @@ def build_prompt(ctx: LogContext, *, text: str | None, has_audio: bool, now: dat
     lines.append("My categories: " + ", ".join(c.name for c in ctx.categories) + ".")
     if ctx.people:
         lines.append("People I know: " + ", ".join(p.name for p in ctx.people) + ".")
+    if ctx.debts:
+        lines.append(
+            "I owe: " + "; ".join(f"{d.person.name} {rupees(d.amount_paise)} for {d.description}" for d in ctx.debts) + "."
+        )
 
     if ctx.txns:
         lines.append("Bank transactions waiting to be explained:")
@@ -351,6 +369,40 @@ class _Resolver:
             return None
         return {"bank_txn_id": txn.id, "txn_label": g.txn.strip().upper(), "reason": g.reason}
 
+    def owe(self, g: GOwe) -> dict[str, Any]:
+        category, problem = self.category(g.category)
+        return {
+            "person_name": self.person_name(g.person),
+            "amount_paise": to_paise(g.amount),
+            "description": g.description.strip()[:200] or "Owed",
+            "category_id": category.id if category else None,
+            "issues": [problem] if problem else [],
+        }
+
+    def repaid(self, g: GRepay) -> dict[str, Any]:
+        issues: list[str] = []
+        amount = to_paise(g.amount)
+        name = self.person_name(g.person)
+        txn = self.txn(g.txn)
+        if g.txn and (txn is None or txn.direction != "debit"):
+            issues.append(f"{g.txn} isn't a payment out, so this is recorded as cash")
+            txn = None
+        owed = sum(d.amount_paise for d in self.ctx.debts if d.person.name.lower() == name.lower())
+        if owed == 0:
+            issues.append(f"You don't owe {name} anything right now")
+        elif amount != owed and not any(
+            d.amount_paise == amount for d in self.ctx.debts if d.person.name.lower() == name.lower()
+        ):
+            issues.append(f"You owe {name} {rupees(owed)}, not {rupees(amount)}")
+        return {
+            "person_name": name,
+            "amount_paise": amount,
+            "bank_txn_id": txn.id if txn else None,
+            "txn_label": g.txn.strip().upper() if txn and g.txn else None,
+            "owed_paise": owed,
+            "issues": issues,
+        }
+
 
 def resolve(
     s: Session, user_id: int, ctx: LogContext, g: GProposal, *, now: datetime
@@ -360,7 +412,11 @@ def resolve(
     settlements = [r.settlement(s, user_id, st) for st in g.settlements if to_paise(st.amount) > 0]
     transfers = [n for n in (r.txn_note(t, "transfer") for t in g.transfers) if n]
     ignored = [n for n in (r.txn_note(t, "ignored") for t in g.ignored) if n]
+    debts = [r.owe(o) for o in g.i_owe if to_paise(o.amount) > 0 and o.person.strip()]
+    repayments = [r.repaid(x) for x in g.repaid if to_paise(x.amount) > 0 and x.person.strip()]
     return {
+        "debts": debts,
+        "repayments": repayments,
         "transcript": g.transcript.strip(),
         "questions": [q.strip() for q in g.questions if q.strip()],
         "txns": [
@@ -398,10 +454,15 @@ def commit(s: Session, user_id: int, data: LogCommitIn) -> dict[str, Any]:
     settlements = [st for item in data.settlements for st in settle(s, user_id, item)]
     _mark_txns(s, user_id, data.transfers, "transfer")
     _mark_txns(s, user_id, data.ignored, "ignored")
+    created_debts = [debts.create_debt(s, user_id, d) for d in data.debts]
+    note = next((e.note_raw for e in data.expenses if e.note_raw), None)
+    repaid = [debts.repay_from_request(s, user_id, r, note) for r in data.repayments]
     s.flush()
     return {
-        "expense_ids": [e.id for e in expenses],
+        "expense_ids": [e.id for e in expenses] + [e.id for e in repaid],
         "settlement_count": len(settlements),
         "transfer_count": len(data.transfers),
         "ignored_count": len(data.ignored),
+        "debt_count": len(created_debts),
+        "repaid_count": len(repaid),
     }

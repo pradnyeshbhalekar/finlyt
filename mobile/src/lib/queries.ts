@@ -1,8 +1,11 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { File } from "expo-file-system";
 
 import { api, queryString } from "./api";
 import type {
+  ActivityPage,
+  AskTurn,
+  Balances,
   BankTxnItem,
   ChatMessage,
   Expense,
@@ -40,7 +43,17 @@ export function useExpenses(params: { from?: string; to?: string; limit?: number
   });
 }
 
-function useRefreshMoney() {
+/** One entry, for its full-screen view. */
+export function useExpense(id: number) {
+  return useQuery({
+    queryKey: ["expenses", "one", id],
+    queryFn: () => api<Expense>(`/api/expenses/${id}`),
+    enabled: Number.isFinite(id),
+  });
+}
+
+/** Refetch everything money-related, e.g. after an SMS sync saved or settled something. */
+export function useRefreshMoney() {
   const queryClient = useQueryClient();
   return () =>
     Promise.all([
@@ -49,6 +62,8 @@ function useRefreshMoney() {
       queryClient.invalidateQueries({ queryKey: ["meta"] }),
       queryClient.invalidateQueries({ queryKey: ["plan"] }),
       queryClient.invalidateQueries({ queryKey: ["txns"] }),
+      queryClient.invalidateQueries({ queryKey: ["activity"] }),
+      queryClient.invalidateQueries({ queryKey: ["balances"] }),
     ]);
 }
 
@@ -154,5 +169,34 @@ export function useResolveTxn() {
     mutationFn: ({ id, status }: { id: number; status: "transfer" | "ignored" | "income" }) =>
       api<BankTxnItem>(`/api/txns/${id}/resolve`, { method: "POST", body: { status } }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["txns"] }),
+  });
+}
+
+/** History: every kind of event, newest first, a page at a time. */
+export function useActivity() {
+  return useInfiniteQuery({
+    queryKey: ["activity"],
+    initialPageParam: null as string | null,
+    queryFn: ({ pageParam }) =>
+      api<ActivityPage>(`/api/activity${queryString({ limit: 60, before: pageParam ?? undefined })}`),
+    getNextPageParam: (last) => last.next_before,
+  });
+}
+
+/** Who owes me, and whom I owe. */
+export function useBalances() {
+  return useQuery({ queryKey: ["balances"], queryFn: () => api<Balances>("/api/people/balances") });
+}
+
+export function useAsk() {
+  return useMutation({
+    mutationFn: (messages: ChatMessage[]) => api<AskTurn>("/api/ask", { method: "POST", body: { messages } }),
+  });
+}
+
+/** A separate sign-in token for an AI assistant (MCP client) such as Claude. */
+export function useConnectToken() {
+  return useMutation({
+    mutationFn: () => api<{ token: string; mcp_url: string }>("/api/auth/connect-token", { method: "POST" }),
   });
 }

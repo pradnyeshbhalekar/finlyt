@@ -7,10 +7,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 export function KeyboardAware({ children, rest }: { children?: ReactNode; rest?: number }) {
   const insets = useSafeAreaInsets();
-  const keyboard = useAnimatedKeyboard({
-    isStatusBarTranslucentAndroid: true,
-    isNavigationBarTranslucentAndroid: true,
-  });
+  // Edge-to-edge is always on, so no translucency options are needed (they'd be ignored).
+  const keyboard = useAnimatedKeyboard();
   // Padding when the keyboard is closed: clear the gesture bar (or `rest` if given).
   const closed = rest ?? Math.max(insets.bottom, 12);
   const style = useAnimatedStyle(() => ({

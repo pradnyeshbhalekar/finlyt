@@ -109,6 +109,67 @@ The user's ask: every Sunday they talk with Finlyt about the coming week, the wa
 - Not yet seen on the device: the user granting SMS access and real bank SMS appearing under "To log".
 - zsh gotcha: never use `path` as a loop variable (it's tied to `PATH`).
 
+## Connection notes (2026-11-05, late night)
+
+- The phone's Wi-Fi sometimes drops for a moment or hops networks. Each time, wireless debugging restarts on a **new port** (39897 → 36703 → 44839); find it with `adb mdns services`. During a drop the app showed `UnknownHostException` for `finlyt-api.vercel.app`, but the router, 8.8.8.8 and the phone itself resolved it fine afterwards. It isn't a DNS block. Private DNS on the phone is off.
+- **Open the dev build on Metro over Wi-Fi, not through adb reverse**, so a dropped adb link doesn't cut the app off from its JS: `adb shell am start -a android.intent.action.VIEW -d "exp+finlyt://expo-development-client/?url=http%3A%2F%2F192.168.0.103%3A8081" com.finlyt.app`. Metro listens on the LAN (`curl http://192.168.0.103:8081/status`).
+- `api()` now retries GETs once after 1.5 s on a network error (never writes) and shows a plain offline message. The check-in has a Try again button.
+- Committed and pushed `e3b5694` (redesign, quick parse, speech, planning, SMS). Module build output is now gitignored.
+
+## Plan section, site-style splash and step-by-step onboarding (2026-11-05, ~22:20)
+
+The user asked: take planning out of Settings into its own section, make the splash like https://finlyt.onrender.com, and make onboarding better, one thing at a time.
+
+- **Plan section:** `app/plan/index.tsx` (overview: month spent of budget with a bar, days left; a Today card with left of limit and "Saved for surprises"; "Set aside this month" items with Paid ticks; the Sunday check-in time, editable; "Talk to Finlyt" button) and `app/plan/chat.tsx` (the chat, moved from `app/plan.tsx`). Reached from a Target icon in Home's header and from the Home strip. The Sunday reminder opens `/plan/chat`. Settings no longer has planning.
+- **Site look:** the website uses Geist, paper `#FAFAF9` / navy `#0B1033` / black, the eyebrow "Expense tracker for Android", the headline "Never forget an expense again." and a light pill button. The app now uses **Geist** (`@expo-google-fonts/geist`; Inter removed). The Light background is `#FAFAF9`, and **Auto maps dark mode to Ink (navy)**, like the site; "Dark" is still black. The native splash is paper with a blue coin, or navy with a white coin (`splash-icon-light/dark.png` from `render-brand.js`), and needed a rebuild (installed). `components/intro.tsx` replays the site hero on each cold start (logo, eyebrow, headline, copy fade in one by one, tap to skip). It closes 900 ms after the last line's entering animation finishes (Reanimated `withCallback` plus `scheduleOnRN`), with a 5 s fallback. A plain 2 s timer cut it short in the dev build.
+- **Sign-in:** a hero like the site, with an inverse pill "Continue with Google".
+- **Onboarding** (`app/onboarding.tsx`): five steps with progress dots and back: welcome with four features → check-in times → "Show me first" or "Save straight away" cards → bank SMS (sample row; Allow or Not now; skipped without the SMS module) → "Want a daily limit?" (Plan with Finlyt opens `/plan/chat` after finishing). Each step's parts use `FadeInDown` with staggered delays, and a new key per step replays them.
+- Gotcha: Reanimated `Animated.View` ignores NativeWind `className`; put classes on an inner `View`.
+- Not yet seen on the phone: the new onboarding (the user is already onboarded) and the fixed intro (the user was mid check-in, so no cold restart).
+
+## Splash ported from the website, tap bounce, entry screen (2026-11-05, ~22:40)
+
+- **Splash** (`components/splash.tsx`) ports finlyt.onrender.com's `Splash.jsx`. The exact keyframes were pulled from the site's public bundle (`/assets/index-*.js`): pop 0–450 ease-out; dance 400–1400 ease-in-out (±12°, 1.06/0.94 squash, −16%/−24% hops, bottom-centre pivot); blink 400–1400 (scaleY 0.1 at 37%); slide 1450–1950 cubic-bezier(0.5,0,0.2,1); letters from 1500, 80 ms apart, 420 ms ease-out each, from their own bottom centre; happy hop 2320–2800; fly 2700–3350 cubic-bezier(0.65,0,0.25,1) with a top-left origin onto the measured header box; background fade 2750–3350; then a 150 ms swap.
+  - One shared-value clock drives everything; a tap retimes the rest at 5×. Reduced motion skips it.
+  - Logo size: min(84, 18.7% of the width). Layers as on the site: fly > slide > pop > coin (dance/hop) with separate eye and letter views.
+  - Shared helpers in `lib/motion.ts` (`sample`, `EASE`, `TAP_BOUNCE`, `taps`).
+  - `brand.tsx` now draws the site's exact shapes: coin viewBox `18 12 64 76`, wordmark `-17 -58.11 205 76` with 6 letters (`LETTERS`, with boxes), `CoinBody`, `CoinEyes`, `WordmarkSvg`, `HeaderLogo`.
+  - **Gotchas:**
+    - The header logo's `measureInWindow` never answered on first layout (Fabric). It now uses `collapsable={false}` and `getBoundingClientRect()`, and the splash asks for a fresh measurement at 600 ms and 2300 ms via JS timers (`splashStore.requestMeasure`).
+    - `scheduleOnRN(splashStore.method)` from `useAnimatedReaction` didn't seem to fire, so the cues are plain `setTimeout`s rescheduled on speed-up.
+    - The fly onto the header is not yet seen working on the device; the last runs fell back to the fade, which looks fine. Check it next.
+- **Tap bounce:** the root view's `onTouchStart`/`onTouchEnd` count a tap (under 12 px of movement, under 600 ms) → `taps.emit()`. The `HeaderLogo` coin plays the site's header bounce (`TAP_BOUNCE`, 720 ms ease-out, bottom-centre pivot) on its own layer above the mood animations.
+- **Entry screen:** `app/expense/[id].tsx` (big category badge, description, 6xl amount, "Your share of", date; paid with, with "Matched to a bank SMS"; owed to you, with paid-back state; "What you said"; source; Delete). Opened by tapping an entry on Home or in History. `useExpense(id)` query.
+- **Privacy:** while capturing splash frames I screenshotted another app the user had switched to (GPay). The screenshots were deleted. Don't screenshot or cold-restart the phone while the user might be using it; ask first.
+
+## Groq fallback (2026-11-05, ~23:00) — waiting for the key
+
+The user wants to stay free. Gemini stays primary; **Groq is the fallback** (`finlyt_api/gemini.py`: `GroqJson` uses the OpenAI-compatible chat API with a JSON-schema response format, retries in `json_object` mode if the schema is rejected, and validates with Pydantic. `FallbackProposer`/`FallbackPlanner` try Gemini first, then Groq; voice notes can't go to Groq). `GROQ_API_KEY` and `GROQ_MODEL` (default `openai/gpt-oss-120b`) are in `Settings`. 11 tests in `tests/test_fallback.py` (mocked httpx); 90 in total.
+- **Not yet active:** the user hasn't made a Groq key. When they do: put it in the root `.env` → copy to `backend/.env` → `printf %s "$KEY" | npx vercel@65.11.0 env add GROQ_API_KEY production --force --sensitive` → deploy (ask first). Then run the casual-input smoke test against Groq alone to check its Hinglish accuracy.
+- Free-tier notes (Nov 2026; Google no longer publishes numbers, so check AI Studio): Flash-Lite about 500 requests/day; Flash varies. Groq `gpt-oss-120b` about 1,000 requests/day and 200k tokens/day (about 80 Finlyt calls).
+
+## History of everything, money I owe, MCP + Ask Finlyt (2026-11-05, ~23:30) — DEPLOYED
+
+- **Money I owe** (`debts` table, migration `b7e2d4c9a1f3`; `services/debts.py`, `services/people.py`). A debt isn't spending; paying it back creates an expense linked to the payment ("Movie ticket · paid back Aaditya"), so it's counted once, when the money leaves.
+  - Gemini's proposal has `i_owe` and `repaid` (prompt and context list open debts).
+  - `/api/log/commit` takes `debts` and `repayments` (UPI txn or cash).
+- **SMS matching** (in `sms.sync`):
+  - A debit to someone I owe exactly that much (one debt or all of them) is repaid automatically.
+  - A credit from someone who owes me (no more than owed) settles their dues.
+  - People are matched by a known UPI alias or by a first name in the bank name or UPI ID; only unambiguous matches count. The alias is learned for next time.
+  - The response includes `matched`; the app shows a toast ("From your bank SMS: paid back Aaditya ₹200").
+- **History of everything:** `GET /api/activity` (`services/activity.py`) merges expenses, paybacks received (grouped), debts, bank txns marked transfer/income/ignored, and plans, newest first, paged by `before`. The History screen renders each kind with icons and day totals. `GET /api/people/balances` feeds the Owed screen ("They owe you" and "You owe them").
+- **MCP:** `POST /api/mcp` (`routes/mcp.py`) is a stateless JSON-RPC MCP server (initialize, ping, tools/list, tools/call; GET → 405), behind the normal Bearer auth.
+  - 7 read-only tools in `services/insights.py`: spending_summary, find_expenses, people_balances, budget_status, bank_payments, recent_activity, categories_and_accounts. Amounts are in rupees.
+  - `POST /api/auth/connect-token` makes a separate session for an assistant. Settings → "Connect Claude (MCP)" copies `claude mcp add --transport http finlyt <url>/api/mcp --header "Authorization: Bearer …"`.
+- **Ask Finlyt:** `POST /api/ask` (`routes/ask.py`) runs a tool-calling loop (`GeminiAgent`, with `GroqJson.agent` as the fallback; up to 6 rounds) over the same tools. `app/ask.tsx` is a chat with suggestions; the Home Sparkles icon opens it, and questions typed in the Home box (`looksLikeQuestion`) go there with `q`.
+  - Live-tested on a local database: totals, the Food subset and both-ways balances were all correct. Replies are plain text, no markdown.
+- **Real free-tier limit seen:** a 429 said `limit: 20` requests a day for Gemini Flash (counted as gemini-3.6-flash). The default chain now ends with `gemini-3.5-flash-lite` and `gemini-3.1-flash-lite` (about 500/day each), then Groq.
+- 100 backend tests pass; app typecheck and lint pass.
+- **Shipped:** migration `b7e2d4c9a1f3` is applied on Neon and the backend is deployed (production returns 401, not 404, for the new routes without a token). Home shows "you owe ₹X" next to "owed to you", and an SMS match refreshes all money data.
+- **Deployed (second deploy):** when a payment is explained by hand ("that 200 was paying Aaditya back", or a payback from someone), the UPI ID is now remembered (`dues.settle` and `debts.repay_from_request` call `learn_alias`), so the next payment to or from that UPI ID matches by itself. Covered by a test; 101 pass.
+- **Still open:** Metro logs `[splash] aim {"target":null,...}`, so the header never reports its rect and the splash fades instead of flying to the header.
+
 ## Lessons from this session (non-obvious)
 
 - **Gemini free tier is flaky.** `gemini-3.8-flash` (newest) kept returning 503 "high demand" or hanging until 504. `gemini-3.5-flash` usually answered in 3–8 s, but it also returned 503 at times. So `GeminiProposer` tries `3.5-flash → 3.8-flash → 2.5-flash`, with no same-model retries and a 40 s timeout each. Gemini 3 takes `thinking_level`; 2.5 needs `thinking_budget` instead. Billing on the key would also stop Google training on prompts (see `plan.md`).

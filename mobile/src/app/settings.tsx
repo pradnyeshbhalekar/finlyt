@@ -1,25 +1,22 @@
 import Constants from "expo-constants";
 import { router } from "expo-router";
-import { Bell, CalendarClock, LogOut, MessagesSquare, Pencil } from "lucide-react-native";
+import * as Clipboard from "expo-clipboard";
+import { Bell, LogOut, Pencil, Plug, Sparkles } from "lucide-react-native";
 import { useEffect, useState } from "react";
 import { ScrollView, View } from "react-native";
 
 import { ReminderEditor } from "@/components/reminder-editor";
-import { formatClock, TimePickerSheet } from "@/components/time-picker";
 import { Divider, Icon, Row, SectionLabel, Segmented, SwitchRow, Txt } from "@/components/ui";
 import { useAuth } from "@/lib/auth";
 import { API_URL } from "@/lib/config";
 import {
-  DEFAULT_CHECK_IN,
-  getCheckInTime,
   getReminderTimes,
-  saveCheckInTime,
   saveReminderTimes,
   sendTestReminder,
   type ReminderTime,
 } from "@/lib/notifications";
 import { usePrefs } from "@/lib/prefs";
-import { usePlan } from "@/lib/queries";
+import { useConnectToken } from "@/lib/queries";
 import type { ThemeMode } from "@/lib/theme";
 
 const THEMES: { value: ThemeMode; label: string }[] = [
@@ -32,23 +29,31 @@ const THEMES: { value: ThemeMode; label: string }[] = [
 export default function Settings() {
   const { user, signOut } = useAuth();
   const prefs = usePrefs();
-  const planning = usePlan(); // an older server without planning: hide that section
   const [times, setTimes] = useState<ReminderTime[] | null>(null);
   const [reminderNote, setReminderNote] = useState<string | null>(null);
-  const [checkIn, setCheckIn] = useState<ReminderTime>(DEFAULT_CHECK_IN);
-  const [pickingCheckIn, setPickingCheckIn] = useState(false);
-  const [pickerRound, setPickerRound] = useState(0);
+  const connect = useConnectToken();
+  const [connectNote, setConnectNote] = useState<string | null>(null);
+
+  // A separate token for an AI assistant (MCP client), copied as a ready-to-run command.
+  async function connectAssistant() {
+    try {
+      const { token, mcp_url } = await connect.mutateAsync();
+      await Clipboard.setStringAsync(
+        `claude mcp add --transport http finlyt ${mcp_url} --header "Authorization: Bearer ${token}"`,
+      );
+      setConnectNote(
+        "Copied a command. Run it in a terminal on your computer and Claude can read (not change) your Finlyt data.",
+      );
+    } catch (e) {
+      setConnectNote((e as Error).message);
+    }
+  }
 
   useEffect(() => {
     void getReminderTimes().then(setTimes);
-    void getCheckInTime().then(setCheckIn);
   }, []);
 
-  async function changeCheckIn(time: ReminderTime) {
-    setPickingCheckIn(false);
-    setCheckIn(time);
-    await saveCheckInTime(time);
-  }
+
 
   async function changeTimes(next: ReminderTime[]) {
     setTimes(next);
@@ -105,35 +110,6 @@ export default function Settings() {
         />
       </View>
 
-      {planning.isSuccess ? (
-      <>
-      <SectionLabel className="mb-1 mt-10">Planning</SectionLabel>
-      <View className="-mx-3">
-        <Row
-          onPress={() => router.push("/plan")}
-          leading={<Icon icon={MessagesSquare} size={20} tone="muted" />}
-          title="Talk to Finlyt"
-          subtitle="Budget, planned spends and your daily limit"
-        />
-        <Row
-          onPress={() => {
-            setPickerRound((r) => r + 1);
-            setPickingCheckIn(true);
-          }}
-          leading={<Icon icon={CalendarClock} size={20} tone="muted" />}
-          title="Sunday check-in"
-          subtitle={`Every Sunday at ${formatClock(checkIn)}`}
-        />
-      </View>
-      <TimePickerSheet
-        key={pickerRound}
-        visible={pickingCheckIn}
-        initial={checkIn}
-        onClose={() => setPickingCheckIn(false)}
-        onDone={(time) => void changeCheckIn(time)}
-      />
-      </>
-      ) : null}
 
       <SectionLabel className="mb-1 mt-10">Check-ins</SectionLabel>
       <Txt tone="muted" className="mb-2 text-sm">
@@ -153,8 +129,29 @@ export default function Settings() {
         </Txt>
       ) : null}
 
+      <SectionLabel className="mb-1 mt-10">AI assistants</SectionLabel>
+      <View className="-mx-3">
+        <Row
+          onPress={() => void connectAssistant()}
+          leading={<Icon icon={Plug} size={20} tone="muted" />}
+          title="Connect Claude (MCP)"
+          subtitle="Let an AI assistant read your spending to answer questions"
+        />
+      </View>
+      {connectNote ? (
+        <Txt tone="muted" className="mt-1 text-sm">
+          {connectNote}
+        </Txt>
+      ) : null}
+
       <Divider className="mt-8" />
       <View className="-mx-3 mt-2">
+        <Row
+          onPress={() => prefs.update({ onboarded: false })}
+          leading={<Icon icon={Sparkles} size={20} tone="muted" />}
+          title="Replay the welcome"
+          subtitle="Go through the setup steps again"
+        />
         <Row
           onPress={() => void signOut()}
           leading={<Icon icon={LogOut} size={20} tone="danger" />}

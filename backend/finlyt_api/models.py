@@ -343,3 +343,34 @@ class PlannedItem(Base):
     amount_paise: Mapped[int] = mapped_column(BigInteger)
     category_id: Mapped[int | None] = mapped_column(ForeignKey("categories.id", ondelete="SET NULL"))
     created_at: Mapped[datetime] = _created()
+
+
+class Debt(Base):
+    """Money I owe someone, e.g. they paid for my movie ticket.
+
+    It isn't spending yet: when I pay it back (a UPI debit matched from bank SMS, or cash), the
+    repayment becomes an expense, so the money is counted once, when it actually leaves.
+    """
+
+    __tablename__ = "debts"
+    __table_args__ = (
+        CheckConstraint("amount_paise > 0", name="amount_positive"),
+        CheckConstraint(one_of("status", ("open", "settled")), name="status"),
+        Index("ix_debts_user_status", "user_id", "status"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = _owner()
+    person_id: Mapped[int] = mapped_column(ForeignKey("people.id"), index=True)
+    description: Mapped[str] = mapped_column(String(200))
+    category_id: Mapped[int | None] = mapped_column(ForeignKey("categories.id", ondelete="SET NULL"))
+    amount_paise: Mapped[int] = mapped_column(BigInteger)
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    status: Mapped[str] = mapped_column(String(16), server_default=text("'open'"))
+    note_raw: Mapped[str | None] = mapped_column(Text)
+    # The expense created when it was paid back.
+    expense_id: Mapped[int | None] = mapped_column(ForeignKey("expenses.id", ondelete="SET NULL"))
+    settled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = _created()
+
+    person: Mapped[Person] = relationship()

@@ -1,21 +1,23 @@
 import "../global.css";
 
 import {
-  Inter_400Regular,
-  Inter_500Medium,
-  Inter_600SemiBold,
-  Inter_700Bold,
+  Geist_400Regular,
+  Geist_500Medium,
+  Geist_600SemiBold,
+  Geist_700Bold,
   useFonts,
-} from "@expo-google-fonts/inter";
+} from "@expo-google-fonts/geist";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import * as SystemUI from "expo-system-ui";
-import { useEffect, useState, type ReactNode } from "react";
-import { useColorScheme, View } from "react-native";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useColorScheme, View, type GestureResponderEvent } from "react-native";
 
+import { Splash } from "@/components/splash";
 import { AuthProvider, useAuth } from "@/lib/auth";
+import { taps } from "@/lib/motion";
 import { scheduleReminders, useNotificationRedirect } from "@/lib/notifications";
 import { PrefsProvider, usePrefs } from "@/lib/prefs";
 import { fonts, resolveTheme, ThemeContext, themeVars } from "@/lib/theme";
@@ -23,7 +25,7 @@ import { fonts, resolveTheme, ThemeContext, themeVars } from "@/lib/theme";
 void SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
-  const [fontsLoaded] = useFonts({ Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold });
+  const [fontsLoaded] = useFonts({ Geist_400Regular, Geist_500Medium, Geist_600SemiBold, Geist_700Bold });
   const [queryClient] = useState(
     () => new QueryClient({ defaultOptions: { queries: { retry: 1, staleTime: 30_000 } } }),
   );
@@ -64,10 +66,27 @@ function Themed({ children }: { children: ReactNode }) {
     },
   };
 
+  // A tap anywhere (a touch that ends quickly without moving, so not a scroll) bounces the logo.
+  const touch = useRef<{ x: number; y: number; at: number } | null>(null);
+  function onTouchStart(e: GestureResponderEvent) {
+    touch.current = { x: e.nativeEvent.pageX, y: e.nativeEvent.pageY, at: Date.now() };
+  }
+  function onTouchEnd(e: GestureResponderEvent) {
+    const start = touch.current;
+    touch.current = null;
+    if (!start || e.nativeEvent.touches.length > 0) return;
+    const moved = Math.hypot(e.nativeEvent.pageX - start.x, e.nativeEvent.pageY - start.y);
+    if (moved < 12 && Date.now() - start.at < 600) taps.emit();
+  }
+
   return (
     <ThemeContext.Provider value={theme}>
       <ThemeProvider value={navigationTheme}>
-        <View style={[{ flex: 1, backgroundColor: colors.bg }, themeVars(colors)]}>
+        <View
+          style={[{ flex: 1, backgroundColor: colors.bg }, themeVars(colors)]}
+          onTouchStart={onTouchStart}
+          onTouchEnd={onTouchEnd}
+        >
           <StatusBar style={theme.isDark ? "light" : "dark"} />
           {children}
         </View>
@@ -81,6 +100,7 @@ function RootNavigator({ fontsLoaded }: { fontsLoaded: boolean }) {
   const prefs = usePrefs();
   const signedIn = status === "signed-in";
   const ready = fontsLoaded && prefs.loaded && status !== "loading";
+  const [introDone, setIntroDone] = useState(false);
 
   // The splash screen stays up until fonts, preferences and the saved session are known.
   useEffect(() => {
@@ -105,13 +125,17 @@ function RootNavigator({ fontsLoaded }: { fontsLoaded: boolean }) {
   } as const;
 
   return (
+    <>
     <Stack screenOptions={{ headerShown: false }}>
       <Stack.Protected guard={signedIn && prefs.onboarded}>
         <Stack.Screen name="index" />
         <Stack.Screen name="history" options={{ ...header, title: "History" }} />
-        <Stack.Screen name="owed" options={{ ...header, title: "Owed to you" }} />
+        <Stack.Screen name="owed" options={{ ...header, title: "Owed" }} />
         <Stack.Screen name="settings" options={{ ...header, title: "Settings" }} />
-        <Stack.Screen name="plan" options={{ ...header, title: "Check-in" }} />
+        <Stack.Screen name="expense/[id]" options={{ ...header, title: "" }} />
+        <Stack.Screen name="ask" options={{ ...header, title: "Ask Finlyt" }} />
+        <Stack.Screen name="plan/index" options={{ ...header, title: "Plan" }} />
+        <Stack.Screen name="plan/chat" options={{ ...header, title: "Check-in" }} />
         <Stack.Screen name="log/review" options={{ ...header, title: "Check entries" }} />
         <Stack.Screen
           name="expense/new"
@@ -125,5 +149,7 @@ function RootNavigator({ fontsLoaded }: { fontsLoaded: boolean }) {
         <Stack.Screen name="sign-in" />
       </Stack.Protected>
     </Stack>
+    {ready && !introDone ? <Splash onDone={() => setIntroDone(true)} /> : null}
+    </>
   );
 }

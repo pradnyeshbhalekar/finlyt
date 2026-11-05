@@ -5,7 +5,7 @@ import { vars } from "nativewind";
 import { createContext, useContext } from "react";
 
 export type ThemeName = "light" | "dark" | "ink";
-/** What the user picked. "auto" follows the phone: Light or Dark. */
+/** What the user picked. "auto" follows the phone: Light, or Ink in dark mode. */
 export type ThemeMode = "auto" | ThemeName;
 
 export type Palette = {
@@ -30,7 +30,7 @@ export const WHITE = "#FFFFFF";
 
 export const palettes: Record<ThemeName, Palette> = {
   light: {
-    bg: "#FFFFFF",
+    bg: "#FAFAF9", // the website's paper
     surface: "#F2F2EF",
     line: "#E5E5E0",
     fg: "#0B1033",
@@ -95,7 +95,9 @@ export function themeVars(p: Palette) {
 export type Theme = { name: ThemeName; colors: Palette; isDark: boolean };
 
 export function resolveTheme(mode: ThemeMode, system: "light" | "dark" | null | undefined): Theme {
-  const name: ThemeName = mode === "auto" ? (system === "dark" ? "dark" : "light") : mode;
+  // Auto follows the phone like finlyt.onrender.com does: Light by day, Ink (navy) in dark mode.
+  // Pick "Dark" explicitly for pure black.
+  const name: ThemeName = mode === "auto" ? (system === "dark" ? "ink" : "light") : mode;
   return { name, colors: palettes[name], isDark: name !== "light" };
 }
 
@@ -105,9 +107,10 @@ export function useTheme(): Theme {
   return useContext(ThemeContext);
 }
 
+// Geist, the same face as finlyt.onrender.com.
 export const fonts = {
-  regular: "Inter_400Regular",
-  medium: "Inter_500Medium",
-  semibold: "Inter_600SemiBold",
-  bold: "Inter_700Bold",
+  regular: "Geist_400Regular",
+  medium: "Geist_500Medium",
+  semibold: "Geist_600SemiBold",
+  bold: "Geist_700Bold",
 } as const;
