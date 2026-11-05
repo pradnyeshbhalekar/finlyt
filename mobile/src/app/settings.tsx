@@ -3,7 +3,7 @@ import { router } from "expo-router";
 import * as Clipboard from "expo-clipboard";
 import { Bell, LogOut, Pencil, Plug, Sparkles } from "lucide-react-native";
 import { useEffect, useState } from "react";
-import { ScrollView, View } from "react-native";
+import { ScrollView, useWindowDimensions, View } from "react-native";
 
 import { ReminderEditor } from "@/components/reminder-editor";
 import { Divider, Icon, Row, SectionLabel, Segmented, SwitchRow, Txt } from "@/components/ui";
@@ -17,6 +17,7 @@ import {
 } from "@/lib/notifications";
 import { usePrefs } from "@/lib/prefs";
 import { useConnectToken } from "@/lib/queries";
+import { WidgetGallery } from "@/components/widget-gallery";
 import type { ThemeMode } from "@/lib/theme";
 
 const THEMES: { value: ThemeMode; label: string }[] = [
@@ -31,6 +32,7 @@ export default function Settings() {
   const prefs = usePrefs();
   const [times, setTimes] = useState<ReminderTime[] | null>(null);
   const [reminderNote, setReminderNote] = useState<string | null>(null);
+  const { width } = useWindowDimensions();
   const connect = useConnectToken();
   const [connectNote, setConnectNote] = useState<string | null>(null);
 
@@ -128,6 +130,9 @@ export default function Settings() {
           {reminderNote}
         </Txt>
       ) : null}
+
+      <SectionLabel className="mb-3 mt-10">Home screen widgets</SectionLabel>
+      <WidgetGallery width={width - 40} />
 
       <SectionLabel className="mb-1 mt-10">AI assistants</SectionLabel>
       <View className="-mx-3">

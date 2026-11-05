@@ -68,6 +68,66 @@
             "com.google.android.as"
           ]
         }
+      ],
+      [
+        "react-native-android-widget",
+        {
+          "fonts": [
+            "./node_modules/@expo-google-fonts/geist/400Regular/Geist_400Regular.ttf",
+            "./node_modules/@expo-google-fonts/geist/500Medium/Geist_500Medium.ttf",
+            "./node_modules/@expo-google-fonts/geist/600SemiBold/Geist_600SemiBold.ttf",
+            "./node_modules/@expo-google-fonts/geist/700Bold/Geist_700Bold.ttf"
+          ],
+          "widgets": [
+            {
+              "name": "Today",
+              "label": "Today",
+              "description": "What you've spent today against your daily limit",
+              "minWidth": "110dp",
+              "minHeight": "110dp",
+              "targetCellWidth": 2,
+              "targetCellHeight": 2,
+              "resizeMode": "horizontal|vertical",
+              "updatePeriodMillis": 1800000,
+              "previewImage": "./assets/widget-preview/today.png"
+            },
+            {
+              "name": "CheckIn",
+              "label": "Next check-in",
+              "description": "Your next reminder and payments left to log",
+              "minWidth": "110dp",
+              "minHeight": "110dp",
+              "targetCellWidth": 2,
+              "targetCellHeight": 2,
+              "resizeMode": "horizontal|vertical",
+              "updatePeriodMillis": 1800000,
+              "previewImage": "./assets/widget-preview/checkin.png"
+            },
+            {
+              "name": "LogExpense",
+              "label": "Log an expense",
+              "description": "Type or say what you spent, straight from home",
+              "minWidth": "250dp",
+              "minHeight": "40dp",
+              "targetCellWidth": 4,
+              "targetCellHeight": 1,
+              "resizeMode": "horizontal",
+              "previewImage": "./assets/widget-preview/log.png"
+            },
+            {
+              "name": "Week",
+              "label": "Last 7 days",
+              "description": "Your spending over the last week, day by day",
+              "minWidth": "250dp",
+              "minHeight": "110dp",
+              "targetCellWidth": 4,
+              "targetCellHeight": 2,
+              "resizeMode": "horizontal|vertical",
+              "updatePeriodMillis": 1800000,
+              "previewImage": "./assets/widget-preview/week.png"
+            }
+          ]
+        }
       ]
     ],
     "experiments": {

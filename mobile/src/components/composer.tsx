@@ -11,7 +11,7 @@ import {
   type RecordingStatus,
 } from "expo-audio";
 import { ArrowUp, AudioLines, Mic, Square, X } from "lucide-react-native";
-import { useRef } from "react";
+import { useEffect, useRef, type ComponentRef } from "react";
 import { ActivityIndicator, Pressable, TextInput, View } from "react-native";
 
 import { logDraft, useLogDraft } from "@/lib/log-draft";
@@ -43,7 +43,12 @@ export function Composer({
   hints,
   onSend,
   onError,
+  launch,
+  onLaunched,
 }: {
+  /** Opened from the home-screen widget: start typing (keyboard up) or talking (mic on). */
+  launch?: "type" | "voice";
+  onLaunched?: () => void;
   busy: boolean;
   placeholder: string;
   /** Words the speech recognizer should expect: accounts, people, places. */
@@ -54,6 +59,7 @@ export function Composer({
   const { colors } = useTheme();
   const { text, note } = useLogDraft();
   const startedAt = useRef(0);
+  const input = useRef<ComponentRef<typeof TextInput>>(null);
 
   // ── Speech to text ─────────────────────────────────────────────────────────
   const dictation = useDictation(logDraft.setText, (message) => logDraft.notice(message));
@@ -100,6 +106,18 @@ export function Composer({
     }
   }
 
+  useEffect(() => {
+    if (!launch) return;
+    // Give the screen a moment to settle (and the keyboard a view to attach to).
+    const timer = setTimeout(() => {
+      if (launch === "voice") void toggleListening();
+      else input.current?.focus();
+      onLaunched?.();
+    }, 350);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [launch]);
+
   const active = listening || recording.isRecording;
   const canSend = !busy && !active && (text.trim().length > 0 || note !== null);
 
@@ -131,6 +149,7 @@ export function Composer({
           </View>
         ) : (
           <TextInput
+            ref={input}
             value={text}
             onChangeText={logDraft.setText}
             placeholder={listening ? "Listening…" : placeholder}

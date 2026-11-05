@@ -20,7 +20,8 @@ import { AuthProvider, useAuth } from "@/lib/auth";
 import { taps } from "@/lib/motion";
 import { scheduleReminders, useNotificationRedirect } from "@/lib/notifications";
 import { PrefsProvider, usePrefs } from "@/lib/prefs";
-import { fonts, resolveTheme, ThemeContext, themeVars } from "@/lib/theme";
+import { fonts, resolveTheme, ThemeContext, themeVars, useTheme } from "@/lib/theme";
+import { scheduleWidgetRefresh } from "@/widgets/refresh";
 
 void SplashScreen.preventAutoHideAsync();
 
@@ -52,6 +53,11 @@ function Themed({ children }: { children: ReactNode }) {
   useEffect(() => {
     void SystemUI.setBackgroundColorAsync(colors.bg);
   }, [colors.bg]);
+
+  // Home-screen widgets follow the app's theme.
+  useEffect(() => {
+    scheduleWidgetRefresh(500);
+  }, [mode]);
 
   const base = theme.isDark ? DarkTheme : DefaultTheme;
   const navigationTheme = {
@@ -98,6 +104,7 @@ function Themed({ children }: { children: ReactNode }) {
 function RootNavigator({ fontsLoaded }: { fontsLoaded: boolean }) {
   const { status } = useAuth();
   const prefs = usePrefs();
+  const { colors } = useTheme();
   const signedIn = status === "signed-in";
   const ready = fontsLoaded && prefs.loaded && status !== "loading";
   const [introDone, setIntroDone] = useState(false);
@@ -132,7 +139,16 @@ function RootNavigator({ fontsLoaded }: { fontsLoaded: boolean }) {
         <Stack.Screen name="history" options={{ ...header, title: "History" }} />
         <Stack.Screen name="owed" options={{ ...header, title: "Owed" }} />
         <Stack.Screen name="settings" options={{ ...header, title: "Settings" }} />
-        <Stack.Screen name="expense/[id]" options={{ ...header, title: "" }} />
+        <Stack.Screen
+          name="expense/[id]"
+          options={{
+            presentation: "formSheet",
+            sheetAllowedDetents: [0.5, 1],
+            sheetInitialDetentIndex: 0,
+            sheetCornerRadius: 28,
+            contentStyle: { backgroundColor: colors.bg },
+          }}
+        />
         <Stack.Screen name="ask" options={{ ...header, title: "Ask Finlyt" }} />
         <Stack.Screen name="plan/index" options={{ ...header, title: "Plan" }} />
         <Stack.Screen name="plan/chat" options={{ ...header, title: "Check-in" }} />

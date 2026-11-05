@@ -1,5 +1,6 @@
-// One entry, full screen: what it was, how much was yours, how it was paid, who owes you, and the
-// words it came from. Opened by tapping an entry on Home or in History.
+// One entry, as a sheet that opens at half height (drag up for all of it, down to close): what it
+// was, how much was yours, how it was paid, who owes you, and the words it came from. Opened by
+// tapping an entry on Home or in History.
 import { router, useLocalSearchParams } from "expo-router";
 import { Check, MessageSquareQuote, Trash2 } from "lucide-react-native";
 import { ActivityIndicator, Alert, ScrollView, View } from "react-native";
@@ -7,19 +8,28 @@ import Animated, { FadeInDown } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { CategoryBadge } from "@/components/category-icon";
-import { Button, Divider, Icon, Row, SectionLabel, Txt } from "@/components/ui";
+import { Divider, Icon, IconButton, Row, SectionLabel, Txt } from "@/components/ui";
 import { timeLabel } from "@/lib/dates";
 import { formatPaise } from "@/lib/money";
 import { useDeleteExpense, useExpense, useMeta } from "@/lib/queries";
 import { useTheme } from "@/lib/theme";
 
-const appear = (i: number) => FadeInDown.delay(70 * i).duration(380);
+const appear = (i: number) => FadeInDown.delay(60 * i).duration(320);
 
 const SOURCE: Record<string, string> = {
   log: "Logged by voice or text",
   manual: "Added by hand",
   import: "Imported from Claude",
 };
+
+/** Android's sheet has no grabber of its own, and in Dark and Ink the edge needs a hint. */
+function Grabber() {
+  return (
+    <View className="items-center pb-1 pt-3">
+      <View className="h-1 w-10 rounded-full bg-line" />
+    </View>
+  );
+}
 
 export default function ExpenseDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -32,14 +42,17 @@ export default function ExpenseDetail() {
   const e = expense.data;
   if (!e) {
     return (
-      <View className="flex-1 items-center justify-center bg-bg px-8">
-        {expense.error ? (
-          <Txt tone="muted" className="text-center">
-            {expense.error.message}
-          </Txt>
-        ) : (
-          <ActivityIndicator color={colors.muted} />
-        )}
+      <View>
+        <Grabber />
+        <View className="h-64 items-center justify-center px-8">
+          {expense.error ? (
+            <Txt tone="muted" className="text-center">
+              {expense.error.message}
+            </Txt>
+          ) : (
+            <ActivityIndicator color={colors.muted} />
+          )}
+        </View>
       </View>
     );
   }
@@ -48,7 +61,7 @@ export default function ExpenseDetail() {
   const accounts = new Map((meta.data?.accounts ?? []).map((a) => [a.id, a]));
   const category = entry.category_id != null ? meta.data?.categories.find((c) => c.id === entry.category_id) : undefined;
   const when = new Date(entry.occurred_at);
-  const day = when.toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long" });
+  const day = when.toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short" });
   const split = entry.my_share_paise !== entry.total_paise;
 
   function confirmDelete() {
@@ -65,36 +78,40 @@ export default function ExpenseDetail() {
   }
 
   return (
-    <View className="flex-1 bg-bg">
-      <ScrollView contentContainerClassName="px-6 pb-10 pt-2">
-        <Animated.View entering={appear(0)}>
-          <CategoryBadge name={category?.name} size={60} />
+    <View className="flex-1">
+      <Grabber />
+      <ScrollView
+        nestedScrollEnabled
+        contentContainerClassName="px-6 pt-2"
+        contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 16) + 16 }}
+      >
+        {/* The top fits in half a screen: what, how much, when. */}
+        <Animated.View entering={appear(0)} className="flex-row items-center gap-3">
+          <CategoryBadge name={category?.name} size={44} />
+          <View className="flex-1">
+            <Txt tone="muted" className="text-sm">
+              {category?.name ?? "Uncategorised"}
+            </Txt>
+            <Txt weight="semibold" className="text-lg" numberOfLines={2}>
+              {entry.description}
+            </Txt>
+          </View>
+          <IconButton icon={Trash2} label="Delete entry" onPress={confirmDelete} tone="danger" disabled={remove.isPending} />
         </Animated.View>
+
         <Animated.View entering={appear(1)}>
-          <Txt tone="muted" className="mt-5 text-sm">
-            {category?.name ?? "Uncategorised"}
-          </Txt>
-          <Txt weight="semibold" className="mt-1 text-2xl" style={{ letterSpacing: -0.3 }}>
-            {entry.description}
-          </Txt>
-        </Animated.View>
-        <Animated.View entering={appear(2)}>
-          <Txt weight="bold" className="mt-4 text-6xl" style={{ letterSpacing: -2, lineHeight: 68 }}>
+          <Txt weight="bold" className="mt-4 text-5xl" style={{ letterSpacing: -1.5, lineHeight: 56 }}>
             {formatPaise(entry.my_share_paise)}
           </Txt>
-          {split ? (
-            <Txt tone="muted" className="text-base">
-              Your share of {formatPaise(entry.total_paise)}
-            </Txt>
-          ) : null}
-          <Txt tone="muted" className="mt-2 text-base">
-            {day} · {timeLabel(entry.occurred_at)}
+          <Txt tone="muted" className="mt-1 text-base">
+            {split ? `Your share of ${formatPaise(entry.total_paise)} · ` : ""}
+            {day}, {timeLabel(entry.occurred_at)}
           </Txt>
         </Animated.View>
 
-        <Divider className="my-6" />
+        <Divider className="my-5" />
 
-        <Animated.View entering={appear(3)}>
+        <Animated.View entering={appear(2)}>
           <SectionLabel className="mb-1">Paid with</SectionLabel>
           <View className="-mx-3">
             {entry.payments.map((p) => (
@@ -114,8 +131,8 @@ export default function ExpenseDetail() {
         </Animated.View>
 
         {entry.dues.length > 0 ? (
-          <Animated.View entering={appear(4)}>
-            <SectionLabel className="mb-1 mt-6">Owed to you</SectionLabel>
+          <Animated.View entering={appear(3)}>
+            <SectionLabel className="mb-1 mt-5">Owed to you</SectionLabel>
             <View className="-mx-3">
               {entry.dues.map((d) => {
                 const left = d.amount_paise - d.settled_paise;
@@ -150,8 +167,8 @@ export default function ExpenseDetail() {
         ) : null}
 
         {entry.note_raw ? (
-          <Animated.View entering={appear(5)}>
-            <SectionLabel className="mb-3 mt-6">What you said</SectionLabel>
+          <Animated.View entering={appear(4)}>
+            <SectionLabel className="mb-3 mt-5">What you said</SectionLabel>
             <View className="flex-row gap-3 rounded-3xl bg-surface p-4">
               <Icon icon={MessageSquareQuote} size={18} tone="muted" />
               <Txt className="flex-1 text-base" style={{ lineHeight: 23 }}>
@@ -161,16 +178,12 @@ export default function ExpenseDetail() {
           </Animated.View>
         ) : null}
 
-        <Txt tone="faint" className="mt-8 text-xs">
+        <Txt tone="faint" className="mt-6 text-xs">
           {SOURCE[entry.source] ?? "Added"} on{" "}
           {new Date(entry.created_at).toLocaleDateString("en-IN", { day: "numeric", month: "short" })},{" "}
           {timeLabel(entry.created_at)}
         </Txt>
       </ScrollView>
-
-      <View className="px-6 pt-2" style={{ paddingBottom: Math.max(insets.bottom, 16) }}>
-        <Button label="Delete entry" icon={Trash2} variant="danger" onPress={confirmDelete} loading={remove.isPending} />
-      </View>
     </View>
   );
 }

@@ -1,10 +1,11 @@
 // Home: today's check-in. Type (or say) what you spent at the bottom; Gemini turns it into
 // entries that are saved straight away or shown for a quick check, per Settings.
-import { router } from "expo-router";
-import { ChevronRight, CircleAlert, Settings, Sparkles, Target, Undo2 } from "lucide-react-native";
+import { router, useLocalSearchParams } from "expo-router";
+import { ChevronRight, CircleAlert, Settings, Target, Undo2 } from "lucide-react-native";
 import { useEffect, useState } from "react";
 import { Alert, AppState, Pressable, RefreshControl, ScrollView, View } from "react-native";
 
+import { AskIcon } from "@/components/ask-icon";
 import { Coin, HeaderLogo, type Mood } from "@/components/brand";
 import { Composer } from "@/components/composer";
 import { ExpenseRow } from "@/components/expense-row";
@@ -46,6 +47,7 @@ import {
   useStats,
 } from "@/lib/queries";
 import { askSmsPermission, smsPermitted, smsSupported, syncSms } from "@/lib/sms";
+import { refreshWidgets, scheduleWidgetRefresh } from "@/widgets/refresh";
 import { useTheme } from "@/lib/theme";
 import type { Expense, Proposal } from "@/lib/types";
 
@@ -59,6 +61,8 @@ const EXAMPLES = [
 
 export default function Home() {
   const { colors } = useTheme();
+  // From the "Log an expense" widget: finlyt:///?compose=type or ?compose=voice.
+  const { compose } = useLocalSearchParams<{ compose?: string }>();
   const prefs = usePrefs();
   const { pending, saved, notice, text, txn } = useLogDraft();
 
@@ -76,6 +80,15 @@ export default function Home() {
   const remove = useDeleteExpense();
   const balances = useBalances();
   const refreshMoney = useRefreshMoney();
+
+  // Keep home-screen widgets in step with what Home shows.
+  useEffect(() => {
+    scheduleWidgetRefresh();
+  }, [day.dataUpdatedAt, plan.dataUpdatedAt, txns.dataUpdatedAt]);
+  useEffect(() => {
+    const sub = AppState.addEventListener("change", (state) => state === "background" && void refreshWidgets());
+    return () => sub.remove();
+  }, []);
 
   const [reminders, setReminders] = useState<ReminderTime[]>(DEFAULT_REMINDERS);
   const [example] = useState(() => EXAMPLES[Math.floor(Math.random() * EXAMPLES.length)]);
@@ -225,7 +238,7 @@ export default function Home() {
         <View className="flex-row items-center justify-between pl-5 pr-3 pt-2">
           <HeaderLogo height={30} mood={headerMood} splashTarget />
           <View className="flex-row">
-            <IconButton icon={Sparkles} label="Ask Finlyt" onPress={() => router.push("/ask")} />
+            <IconButton icon={AskIcon} label="Ask Finlyt" onPress={() => router.push("/ask")} />
             <IconButton icon={Target} label="Plan" onPress={() => router.push("/plan")} />
             <IconButton icon={Settings} label="Settings" onPress={() => router.push("/settings")} />
           </View>
@@ -408,6 +421,8 @@ export default function Home() {
             hints={hints}
             onSend={() => void send()}
             onError={(message) => logDraft.notice(message)}
+            launch={compose === "voice" || compose === "type" ? compose : undefined}
+            onLaunched={() => router.setParams({ compose: undefined })}
           />
           </View>
         </KeyboardAware>

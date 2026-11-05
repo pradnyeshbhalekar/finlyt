@@ -1,7 +1,7 @@
 // Small, theme-aware building blocks. Colours come from the active theme (Light, Dark or Ink),
 // type is Inter, and icons are Lucide. No emojis anywhere in the UI.
 import type { LucideIcon } from "lucide-react-native";
-import type { ReactNode } from "react";
+import type { ComponentType, ReactNode } from "react";
 import {
   ActivityIndicator,
   Modal,
@@ -68,13 +68,16 @@ export function SectionLabel({ children, className = "" }: { children: ReactNode
   );
 }
 
+/** A Lucide icon, or one of ours drawn the same way (size, color, strokeWidth). */
+export type IconType = LucideIcon | ComponentType<{ size?: number; color?: string; strokeWidth?: number }>;
+
 export function Icon({
   icon: IconComponent,
   size = 20,
   color,
   tone = "fg",
 }: {
-  icon: LucideIcon;
+  icon: IconType;
   size?: number;
   color?: string;
   tone?: "fg" | "muted" | "accent" | "danger" | "faint";
@@ -90,7 +93,7 @@ export function IconButton({
   tone = "fg",
   disabled = false,
 }: {
-  icon: LucideIcon;
+  icon: IconType;
   label: string;
   onPress: () => void;
   tone?: "fg" | "muted" | "accent" | "danger";
