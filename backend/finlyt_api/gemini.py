@@ -79,7 +79,34 @@ class Proposer(Protocol):
         ...
 
 
-class GeminiProposer:
+# ── Sunday check-in planning ────────────────────────────────────────────────
+
+
+class GPlannedItem(BaseModel):
+    description: str = Field(description="Short, e.g. 'Rent', 'Pune trip'")
+    amount: float = Field(description="Rupees")
+    date: str | None = Field(description='"YYYY-MM-DD" if known, else null')
+    category: str = Field(description="Exactly one of my category names")
+
+
+class GPlanTurn(BaseModel):
+    reply: str = Field(description="What Finlyt says next: one to three short sentences")
+    ready: bool = Field(description="True once a plan can be shown for me to confirm")
+    monthly_budget: float | None = Field(description="This month's budget in rupees, if known")
+    daily_limit: float | None = Field(description="Suggested daily limit in rupees, if worked out")
+    planned_items: list[GPlannedItem] = Field(description="Every planned item for this month")
+    summary: str = Field(description="One line summing up the plan, for later")
+
+
+class Planner(Protocol):
+    def __call__(self, *, system: str, messages: list[tuple[str, str]]) -> tuple[GPlanTurn, str]:
+        """`messages` are (role, text) with role "user" or "finlyt". Returns the turn and model."""
+        ...
+
+
+class _Gemini:
+    """Shared client: tries each model in turn and parses JSON into a Pydantic model."""
+
     def __init__(self, settings: Settings) -> None:
         from google import genai
         from google.genai import types
@@ -94,15 +121,8 @@ class GeminiProposer:
         configured = [m.strip() for m in (settings.gemini_model or "").split(",") if m.strip()]
         self.models = configured or list(DEFAULT_MODELS)
 
-    def __call__(
-        self, *, system: str, prompt: str, audio: bytes | None, audio_mime: str | None
-    ) -> tuple[GProposal, str]:
+    def _generate(self, *, system: str, contents, schema: type[BaseModel]):
         from google.genai import errors, types
-
-        parts = []
-        if audio:
-            parts.append(types.Part.from_bytes(data=audio, mime_type=audio_mime or "audio/aac"))
-        parts.append(types.Part.from_text(text=prompt))
 
         def config_for(model: str) -> types.GenerateContentConfig:
             # Gemini 3 models take a thinking level; 2.5 uses a token budget instead.
@@ -114,7 +134,7 @@ class GeminiProposer:
             return types.GenerateContentConfig(
                 system_instruction=system,
                 response_mime_type="application/json",
-                response_json_schema=GProposal.model_json_schema(),
+                response_json_schema=schema.model_json_schema(),
                 thinking_config=thinking,
             )
 
@@ -122,7 +142,7 @@ class GeminiProposer:
         for model in self.models:
             try:
                 response = self._client.models.generate_content(
-                    model=model, contents=parts, config=config_for(model)
+                    model=model, contents=contents, config=config_for(model)
                 )
             except errors.APIError as e:
                 log.warning("Gemini %s failed: %s %s", model, e.code, e.message)
@@ -133,7 +153,7 @@ class GeminiProposer:
                     502, "gemini_error", f"Gemini couldn't process this ({e.code}). Try again."
                 ) from e
             try:
-                return GProposal.model_validate_json(response.text or ""), model
+                return schema.model_validate_json(response.text or ""), model
             except ValidationError as e:
                 log.warning("Gemini %s returned an unexpected shape: %s", model, e)
                 raise ApiError(
@@ -144,12 +164,53 @@ class GeminiProposer:
         )
 
 
+class GeminiProposer(_Gemini):
+    def __call__(
+        self, *, system: str, prompt: str, audio: bytes | None, audio_mime: str | None
+    ) -> tuple[GProposal, str]:
+        from google.genai import types
+
+        parts = []
+        if audio:
+            parts.append(types.Part.from_bytes(data=audio, mime_type=audio_mime or "audio/aac"))
+        parts.append(types.Part.from_text(text=prompt))
+        return self._generate(system=system, contents=parts, schema=GProposal)
+
+
+class GeminiPlanner(_Gemini):
+    def __call__(self, *, system: str, messages: list[tuple[str, str]]) -> tuple[GPlanTurn, str]:
+        from google.genai import types
+
+        contents = [
+            types.Content(
+                role="model" if role == "finlyt" else "user", parts=[types.Part.from_text(text=text)]
+            )
+            for role, text in messages
+        ]
+        if not contents or contents[0].role != "user":
+            contents.insert(
+                0, types.Content(role="user", parts=[types.Part.from_text(text="(Check-in started.)")])
+            )
+        return self._generate(system=system, contents=contents, schema=GPlanTurn)
+
+
+def _settings_with_key() -> Settings:
+    settings: Settings = current_app.config["SETTINGS"]
+    if not settings.gemini_api_key:
+        raise ApiError(503, "not_configured", "GEMINI_API_KEY isn't set on the server")
+    return settings
+
+
 def get_proposer() -> Proposer:
     """The app's Gemini client, created on first use. Tests put a fake in the same slot."""
     extensions = current_app.extensions
     if "finlyt.gemini" not in extensions:
-        settings: Settings = current_app.config["SETTINGS"]
-        if not settings.gemini_api_key:
-            raise ApiError(503, "not_configured", "GEMINI_API_KEY isn't set on the server")
-        extensions["finlyt.gemini"] = GeminiProposer(settings)
+        extensions["finlyt.gemini"] = GeminiProposer(_settings_with_key())
     return extensions["finlyt.gemini"]
+
+
+def get_planner() -> Planner:
+    extensions = current_app.extensions
+    if "finlyt.planner" not in extensions:
+        extensions["finlyt.planner"] = GeminiPlanner(_settings_with_key())
+    return extensions["finlyt.planner"]

@@ -53,6 +53,17 @@
           "microphonePermission": "Finlyt records your voice notes so Gemini can turn them into expenses.",
           "enableBackgroundPlayback": false
         }
+      ],
+      [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "Finlyt listens when you tap the mic so you can say what you spent.",
+          "speechRecognitionPermission": "Finlyt turns what you say into text so it can log your spending.",
+          "androidSpeechServicePackages": [
+            "com.google.android.googlequicksearchbox",
+            "com.google.android.as"
+          ]
+        }
       ]
     ],
     "experiments": {

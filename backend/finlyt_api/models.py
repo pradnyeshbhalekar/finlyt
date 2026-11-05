@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 
 from sqlalchemy import (
     BigInteger,
     Boolean,
     CheckConstraint,
+    Date,
     DateTime,
     ForeignKey,
     Index,
@@ -281,3 +282,64 @@ class Settlement(Base):
     created_at: Mapped[datetime] = _created()
 
     due: Mapped[Due] = relationship(back_populates="settlements")
+
+
+class Budget(Base):
+    """My spending budget for a calendar month (IST). `month` is the 1st of that month."""
+
+    __tablename__ = "budgets"
+    __table_args__ = (
+        UniqueConstraint("user_id", "month", name="uq_budgets_user_month"),
+        CheckConstraint("amount_paise > 0", name="amount_positive"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = _owner()
+    month: Mapped[date] = mapped_column(Date)
+    amount_paise: Mapped[int] = mapped_column(BigInteger)
+    created_at: Mapped[datetime] = _created()
+    updated_at: Mapped[datetime] = _updated()
+
+
+class SpendingPlan(Base):
+    """What a check-in with Finlyt agreed: a daily limit for everyday spending from `starts_on`.
+
+    The plan in effect on a day is the latest one that started on or before it. Money not spent
+    under the limit is kept aside for unplanned things (the buffer), not added to later days.
+    """
+
+    __tablename__ = "plans"
+    __table_args__ = (
+        UniqueConstraint("user_id", "starts_on", name="uq_plans_user_starts_on"),
+        CheckConstraint("daily_limit_paise > 0", name="daily_limit_positive"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = _owner()
+    starts_on: Mapped[date] = mapped_column(Date)
+    daily_limit_paise: Mapped[int] = mapped_column(BigInteger)
+    notes: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = _created()
+    updated_at: Mapped[datetime] = _updated()
+
+
+class PlannedItem(Base):
+    """A bigger expense set aside before the daily limit: rent, a trip, a bill.
+
+    Spending in its category during its month counts against it, not against the daily limit.
+    """
+
+    __tablename__ = "planned_items"
+    __table_args__ = (
+        CheckConstraint("amount_paise > 0", name="amount_positive"),
+        Index("ix_planned_items_user_month", "user_id", "month"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = _owner()
+    month: Mapped[date] = mapped_column(Date)
+    due_on: Mapped[date | None] = mapped_column(Date)
+    description: Mapped[str] = mapped_column(String(200))
+    amount_paise: Mapped[int] = mapped_column(BigInteger)
+    category_id: Mapped[int | None] = mapped_column(ForeignKey("categories.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = _created()

@@ -1,31 +1,23 @@
-import Ionicons from "@expo/vector-icons/Ionicons";
+// Edit Gemini's entries in detail before saving (from "Edit" on Home's check card).
 import { router } from "expo-router";
+import { CircleAlert, Plus, X } from "lucide-react-native";
 import { useState, type ComponentProps } from "react";
-import { Pressable, ScrollView, Switch, Text, TextInput, View } from "react-native";
+import { Pressable, ScrollView, TextInput, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Coin } from "@/components/brand";
-import { Button, Card, Chip, Label, Muted } from "@/components/ui";
+import { KeyboardAware } from "@/components/keyboard";
+import { categoryIcon } from "@/components/category-icon";
+import { Button, Chip, Icon, SectionLabel, Toggle, Txt } from "@/components/ui";
 import { dayLabel, isoDate, timeLabel } from "@/lib/dates";
+import { savedMessage } from "@/lib/log";
 import { logDraft, useLogDraft } from "@/lib/log-draft";
 import { formatPaise, parseRupees } from "@/lib/money";
 import { useCommitLog, useMeta } from "@/lib/queries";
-import { colors } from "@/lib/theme";
-import type {
-  Account,
-  Category,
-  LogCommit,
-  PendingTxn,
-  ProposedExpense,
-  ProposedSettlement,
-  TxnNote,
-} from "@/lib/types";
+import { fonts, useTheme } from "@/lib/theme";
+import type { Account, Category, LogCommit, PendingTxn, ProposedExpense } from "@/lib/types";
 
-type EditPayment = {
-  account_id: number;
-  bank_txn_id: number | null;
-  txn_label: string | null;
-  amount: string;
-};
+type EditPayment = { account_id: number; bank_txn_id: number | null; txn_label: string | null; amount: string };
 type EditDue = { name: string; amount: string };
 type EditExpense = {
   include: boolean;
@@ -36,7 +28,6 @@ type EditExpense = {
   dues: EditDue[];
   issues: string[];
 };
-type Toggle<T> = T & { include: boolean };
 
 /** 45000 → "450", 45050 → "450.50" (what goes in an amount field). */
 function rupeeInput(paise: number): string {
@@ -60,55 +51,52 @@ function toEdit(e: ProposedExpense): EditExpense {
   };
 }
 
-function sum(values: (number | null)[]): number {
-  return values.reduce<number>((total, v) => total + (v ?? 0), 0);
-}
+const sum = (values: (number | null)[]) => values.reduce<number>((t, v) => t + (v ?? 0), 0);
 
 export default function Review() {
-  const { proposal, text } = useLogDraft();
+  const insets = useSafeAreaInsets();
+  const { pending } = useLogDraft();
   const meta = useMeta();
   const commit = useCommitLog();
-  const [expenses, setExpenses] = useState<EditExpense[]>(() =>
-    (proposal?.expenses ?? []).map(toEdit),
-  );
-  const [settlements, setSettlements] = useState<Toggle<ProposedSettlement>[]>(() =>
-    (proposal?.settlements ?? []).map((s) => ({ ...s, include: s.issues.length === 0 })),
-  );
-  const [transfers, setTransfers] = useState<Toggle<TxnNote>[]>(() =>
-    (proposal?.transfers ?? []).map((t) => ({ ...t, include: true })),
-  );
-  const [ignored, setIgnored] = useState<Toggle<TxnNote>[]>(() =>
-    (proposal?.ignored ?? []).map((t) => ({ ...t, include: true })),
-  );
+  const [expenses, setExpenses] = useState<EditExpense[]>(() => (pending?.proposal.expenses ?? []).map(toEdit));
   const [error, setError] = useState<string | null>(null);
 
-  if (!proposal) {
+  if (!pending) {
     return (
-      <View className="flex-1 items-center justify-center bg-white p-8 dark:bg-black">
-        <Coin size={72} mood="sleepy" />
-        <Muted className="mt-4 text-center">Nothing to review. Log something on the Log tab first.</Muted>
+      <View className="flex-1 items-center justify-center bg-bg p-8">
+        <Coin size={56} mood="sleepy" variant="bare" />
+        <Txt tone="muted" className="mt-3 text-center">
+          Nothing to check. Log something on Home first.
+        </Txt>
       </View>
     );
   }
-
+  const { proposal, input } = pending;
   const accounts = meta.data?.accounts ?? [];
   const categories = meta.data?.categories ?? [];
   const txns = new Map(proposal.txns.map((t) => [t.id, t]));
-  const note = (proposal.transcript || text).slice(0, 4000) || null;
 
-  function updateExpense(i: number, change: Partial<EditExpense>) {
+  function update(i: number, change: Partial<EditExpense>) {
     setExpenses((list) => list.map((e, j) => (j === i ? { ...e, ...change } : e)));
   }
 
-  function buildCommit(): LogCommit | string {
-    const body: LogCommit = { expenses: [], settlements: [], transfers: [], ignored: [] };
+  function build(): LogCommit | string {
+    const body: LogCommit = {
+      expenses: [],
+      // Paybacks and transfer/ignore marks aren't edited here; they're saved as Gemini read them.
+      settlements: proposal.settlements.map((s) => ({
+        person_name: s.person_name,
+        amount_paise: s.amount_paise,
+        bank_txn_id: s.bank_txn_id,
+      })),
+      transfers: proposal.transfers.map((t) => t.bank_txn_id),
+      ignored: proposal.ignored.map((t) => t.bank_txn_id),
+    };
     for (const e of expenses.filter((x) => x.include)) {
-      const name = e.description.trim() || "this expense";
-      if (!e.description.trim()) return "Every expense needs a description.";
+      const name = e.description.trim() || "this entry";
+      if (!e.description.trim()) return "Every entry needs a description.";
       const payments = e.payments.map((p) => ({ ...p, paise: parseRupees(p.amount) }));
-      if (payments.length === 0 || payments.some((p) => !p.paise)) {
-        return `Check the payment amounts for “${name}”.`;
-      }
+      if (payments.length === 0 || payments.some((p) => !p.paise)) return `Check the amounts for “${name}”.`;
       const dues = [];
       for (const d of e.dues) {
         if (!d.name.trim() && !d.amount.trim()) continue;
@@ -116,56 +104,40 @@ export default function Review() {
         if (!d.name.trim() || !paise) return `Each person who owes you for “${name}” needs a name and amount.`;
         dues.push({ person_name: d.name.trim(), amount_paise: paise });
       }
-      const total = sum(payments.map((p) => p.paise));
-      if (sum(dues.map((d) => d.amount_paise)) > total) {
+      if (sum(dues.map((d) => d.amount_paise)) > sum(payments.map((p) => p.paise))) {
         return `People can't owe you more than you paid for “${name}”.`;
       }
       body.expenses.push({
         occurred_at: e.occurred_at,
         description: e.description.trim(),
         category_id: e.category_id,
-        payments: payments.map((p) => ({
-          account_id: p.account_id,
-          amount_paise: p.paise ?? 0,
-          bank_txn_id: p.bank_txn_id,
-        })),
+        payments: payments.map((p) => ({ account_id: p.account_id, amount_paise: p.paise ?? 0, bank_txn_id: p.bank_txn_id })),
         dues,
-        note_raw: note,
+        note_raw: input.slice(0, 4000) || null,
       });
     }
-    for (const s of settlements.filter((x) => x.include)) {
-      body.settlements.push({
-        person_name: s.person_name,
-        amount_paise: s.amount_paise,
-        bank_txn_id: s.bank_txn_id,
-      });
-    }
-    body.transfers = transfers.filter((t) => t.include).map((t) => t.bank_txn_id);
-    body.ignored = ignored.filter((t) => t.include).map((t) => t.bank_txn_id);
-    const count =
-      body.expenses.length + body.settlements.length + body.transfers.length + body.ignored.length;
+    const count = body.expenses.length + body.settlements.length + body.transfers.length + body.ignored.length;
     return count === 0 ? "Everything is switched off, so there's nothing to save." : body;
   }
 
   async function save() {
-    const body = buildCommit();
+    const body = build();
     if (typeof body === "string") {
       setError(body);
       return;
     }
     setError(null);
     try {
-      await commit.mutateAsync(body);
-      const parts = [];
-      if (body.expenses.length) {
-        parts.push(`${body.expenses.length} expense${body.expenses.length === 1 ? "" : "s"}`);
-      }
-      if (body.settlements.length) {
-        parts.push(`${body.settlements.length} payback${body.settlements.length === 1 ? "" : "s"}`);
-      }
+      const result = await commit.mutateAsync(body);
       // Leave first so this screen doesn't re-render empty once the draft is cleared.
       router.back();
-      logDraft.finish(parts.length ? `Saved ${parts.join(" and ")}.` : "Saved.");
+      logDraft.saved({
+        message: savedMessage(body),
+        expenseIds: result.expense_ids,
+        input,
+        questions: [],
+        undoable: body.settlements.length + body.transfers.length + body.ignored.length === 0,
+      });
     } catch (e) {
       setError((e as Error).message);
     }
@@ -174,155 +146,63 @@ export default function Review() {
   const included = expenses.filter((e) => e.include).length;
 
   return (
-    <ScrollView
-      className="flex-1 bg-white dark:bg-black"
-      contentContainerClassName="p-4 pb-16"
-      keyboardShouldPersistTaps="handled"
-    >
-      {proposal.questions.length > 0 ? (
-        <View className="mb-4 rounded-2xl bg-amber-50 p-4 dark:bg-amber-950">
-          <Text className="mb-1 font-semibold text-amber-900 dark:text-amber-200">
-            Gemini wasn&apos;t sure about
-          </Text>
-          {proposal.questions.map((q, i) => (
-            <Text key={i} className="text-amber-900 dark:text-amber-200">
-              • {q}
-            </Text>
-          ))}
-          <Text className="mt-2 text-sm text-amber-800 dark:text-amber-300">
-            Fix it below, or go back and add more detail.
-          </Text>
+    <View className="flex-1 bg-bg">
+      <ScrollView contentContainerClassName="px-5 pb-8" keyboardShouldPersistTaps="handled">
+        {proposal.questions.map((q, i) => (
+          <View key={i} className="mb-3 flex-row gap-2 rounded-2xl bg-surface p-3">
+            <Icon icon={CircleAlert} size={18} tone="muted" />
+            <Txt tone="muted" className="flex-1 text-sm">
+              {q}
+            </Txt>
+          </View>
+        ))}
+        {expenses.map((e, i) => (
+          <ExpenseEditor
+            key={i}
+            expense={e}
+            accounts={accounts}
+            categories={categories}
+            txns={txns}
+            onChange={(change) => update(i, change)}
+          />
+        ))}
+        {error ? (
+          <Txt tone="danger" className="mt-2 text-sm">
+            {error}
+          </Txt>
+        ) : null}
+      </ScrollView>
+      <KeyboardAware rest={Math.max(insets.bottom, 16)}>
+        <View className="px-5 pt-2">
+          <Button
+            label={included > 0 ? `Save ${included} ${included === 1 ? "entry" : "entries"}` : "Save"}
+            onPress={() => void save()}
+            loading={commit.isPending}
+          />
         </View>
-      ) : null}
-
-      {proposal.transcript ? (
-        <Card className="mb-4">
-          <Label>You said</Label>
-          <Text className="italic text-zinc-700 dark:text-zinc-300">“{proposal.transcript}”</Text>
-        </Card>
-      ) : null}
-
-      {expenses.map((e, i) => (
-        <ExpenseCard
-          key={i}
-          expense={e}
-          accounts={accounts}
-          categories={categories}
-          txns={txns}
-          onChange={(change) => updateExpense(i, change)}
-        />
-      ))}
-
-      {settlements.length > 0 ? <Label>Paybacks</Label> : null}
-      {settlements.map((s, i) => (
-        <ToggleRow
-          key={i}
-          title={`${s.person_name} paid you back ${formatPaise(s.amount_paise)}`}
-          subtitle={s.txn_label ? `Arrived as ${s.txn_label}` : "Cash"}
-          issues={s.issues}
-          value={s.include}
-          onChange={(include) =>
-            setSettlements((list) => list.map((x, j) => (j === i ? { ...x, include } : x)))
-          }
-        />
-      ))}
-
-      {transfers.length + ignored.length > 0 ? <Label>Bank transactions</Label> : null}
-      {transfers.map((t, i) => (
-        <ToggleRow
-          key={`t${i}`}
-          title={`${t.txn_label}: ${txnSummary(txns.get(t.bank_txn_id))} is a transfer`}
-          subtitle={t.reason}
-          issues={[]}
-          value={t.include}
-          onChange={(include) =>
-            setTransfers((list) => list.map((x, j) => (j === i ? { ...x, include } : x)))
-          }
-        />
-      ))}
-      {ignored.map((t, i) => (
-        <ToggleRow
-          key={`i${i}`}
-          title={`Ignore ${t.txn_label}: ${txnSummary(txns.get(t.bank_txn_id))}`}
-          subtitle={t.reason}
-          issues={[]}
-          value={t.include}
-          onChange={(include) =>
-            setIgnored((list) => list.map((x, j) => (j === i ? { ...x, include } : x)))
-          }
-        />
-      ))}
-
-      {error ? <Text className="mb-2 mt-2 text-sm text-red-600">{error}</Text> : null}
-      <View className="mt-4">
-        <Button
-          label={included > 0 ? `Save ${included} expense${included === 1 ? "" : "s"}` : "Save"}
-          onPress={() => void save()}
-          loading={commit.isPending}
-        />
-      </View>
-      <Muted className="mt-3 text-center">Reviewed by you, read by {proposal.model}.</Muted>
-    </ScrollView>
-  );
-}
-
-function txnSummary(t: PendingTxn | undefined): string {
-  if (!t) return "transaction";
-  const party = t.counterparty ? ` ${t.direction === "debit" ? "to" : "from"} ${t.counterparty}` : "";
-  return `${formatPaise(t.amount_paise)}${party}`;
-}
-
-function Issues({ issues }: { issues: string[] }) {
-  if (issues.length === 0) return null;
-  return (
-    <View className="mt-2 rounded-xl bg-amber-50 p-2 dark:bg-amber-950">
-      {issues.map((issue, i) => (
-        <Text key={i} className="text-sm text-amber-900 dark:text-amber-200">
-          ⚠︎ {issue}
-        </Text>
-      ))}
+      </KeyboardAware>
     </View>
   );
 }
 
-function ToggleRow({
-  title,
-  subtitle,
-  issues,
-  value,
-  onChange,
-}: {
-  title: string;
-  subtitle: string;
-  issues: string[];
-  value: boolean;
-  onChange: (value: boolean) => void;
-}) {
-  return (
-    <Card className={`mb-3 ${value ? "" : "opacity-60"}`}>
-      <View className="flex-row items-center justify-between gap-3">
-        <View className="flex-1">
-          <Text className="font-medium text-ink dark:text-white">{title}</Text>
-          <Muted>{subtitle}</Muted>
-        </View>
-        <Switch value={value} onValueChange={onChange} trackColor={{ true: colors.primary }} />
-      </View>
-      <Issues issues={issues} />
-    </Card>
-  );
-}
-
 function SmallInput(props: ComponentProps<typeof TextInput>) {
+  const { colors } = useTheme();
   return (
     <TextInput
-      placeholderTextColor={colors.muted}
-      className="rounded-lg border border-zinc-300 bg-white px-2 py-2 text-base text-ink dark:border-zinc-700 dark:bg-zinc-900 dark:text-white"
+      placeholderTextColor={colors.faint}
+      className="h-11 rounded-xl bg-surface px-3 text-base text-fg"
+      style={{ fontFamily: fonts.regular }}
       {...props}
     />
   );
 }
 
-function ExpenseCard({
+function txnSummary(t: PendingTxn | undefined): string {
+  if (!t) return "";
+  return `${formatPaise(t.amount_paise)}${t.counterparty ? ` to ${t.counterparty}` : ""}`;
+}
+
+function ExpenseEditor({
   expense: e,
   accounts,
   categories,
@@ -335,62 +215,58 @@ function ExpenseCard({
   txns: Map<number, PendingTxn>;
   onChange: (change: Partial<EditExpense>) => void;
 }) {
+  const { colors } = useTheme();
   const total = sum(e.payments.map((p) => parseRupees(p.amount)));
   const owed = sum(e.dues.map((d) => parseRupees(d.amount)));
-  const accountName = (id: number) => accounts.find((a) => a.id === id)?.name ?? "Account";
   const cash = accounts.find((a) => a.kind === "cash") ?? accounts[0];
-  const date = new Date(e.occurred_at);
-
+  const accountName = (id: number) => accounts.find((a) => a.id === id)?.name ?? "Account";
   const setPayment = (i: number, change: Partial<EditPayment>) =>
     onChange({ payments: e.payments.map((p, j) => (j === i ? { ...p, ...change } : p)) });
   const setDue = (i: number, change: Partial<EditDue>) =>
     onChange({ dues: e.dues.map((d, j) => (j === i ? { ...d, ...change } : d)) });
 
   return (
-    <Card className={`mb-4 ${e.include ? "" : "opacity-60"}`}>
-      <View className="flex-row items-center gap-2">
+    <View className={`mb-4 rounded-3xl bg-surface p-4 ${e.include ? "" : "opacity-50"}`}>
+      <View className="flex-row items-center gap-3">
         <TextInput
           value={e.description}
           onChangeText={(description) => onChange({ description })}
-          className="flex-1 text-lg font-semibold text-ink dark:text-white"
           placeholder="What was it?"
-          placeholderTextColor={colors.muted}
+          placeholderTextColor={colors.faint}
+          className="flex-1 text-lg text-fg"
+          style={{ fontFamily: fonts.semibold }}
         />
-        <Switch
-          value={e.include}
-          onValueChange={(include) => onChange({ include })}
-          trackColor={{ true: colors.primary }}
-          accessibilityLabel="Save this expense"
-        />
+        <Toggle value={e.include} onChange={(include) => onChange({ include })} label="Save this entry" />
       </View>
-      <Muted>
-        {dayLabel(isoDate(date))}, {timeLabel(e.occurred_at)} · {formatPaise(total)}
+      <Txt tone="muted" className="mt-1 text-sm">
+        {dayLabel(isoDate(new Date(e.occurred_at)))}, {timeLabel(e.occurred_at)} · {formatPaise(total)}
         {owed > 0 ? ` · your share ${formatPaise(Math.max(total - owed, 0))}` : ""}
-      </Muted>
+      </Txt>
 
       {e.include ? (
         <>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mt-3">
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mt-4">
             {categories.map((c) => (
               <Chip
                 key={c.id}
-                label={`${c.emoji} ${c.name}`}
+                label={c.name}
+                icon={categoryIcon(c.name)}
                 selected={e.category_id === c.id}
                 onPress={() => onChange({ category_id: c.id })}
               />
             ))}
           </ScrollView>
 
-          <Label>Paid with</Label>
+          <SectionLabel className="mb-2 mt-4">Paid with</SectionLabel>
           {e.payments.map((p, i) => (
             <View key={i} className="mb-2 flex-row items-center gap-2">
               <View className="flex-1">
                 {p.bank_txn_id ? (
                   <View>
-                    <Text className="font-medium text-ink dark:text-white">
-                      {p.txn_label} · {accountName(p.account_id)}
-                    </Text>
-                    <Muted>{txnSummary(txns.get(p.bank_txn_id))}</Muted>
+                    <Txt weight="medium">{accountName(p.account_id)}</Txt>
+                    <Txt tone="muted" className="text-xs">
+                      {txnSummary(txns.get(p.bank_txn_id))}
+                    </Txt>
                   </View>
                 ) : (
                   <ScrollView horizontal showsHorizontalScrollIndicator={false}>
@@ -417,9 +293,9 @@ function ExpenseCard({
                 <Pressable
                   onPress={() => onChange({ payments: e.payments.filter((_, j) => j !== i) })}
                   accessibilityLabel="Remove payment"
-                  className="p-1"
+                  hitSlop={8}
                 >
-                  <Ionicons name="close" size={18} color={colors.muted} />
+                  <Icon icon={X} size={18} tone="muted" />
                 </Pressable>
               ) : null}
             </View>
@@ -427,28 +303,22 @@ function ExpenseCard({
           {cash ? (
             <Pressable
               onPress={() =>
-                onChange({
-                  payments: [
-                    ...e.payments,
-                    { account_id: cash.id, bank_txn_id: null, txn_label: null, amount: "" },
-                  ],
-                })
+                onChange({ payments: [...e.payments, { account_id: cash.id, bank_txn_id: null, txn_label: null, amount: "" }] })
               }
-              className="py-1"
+              className="flex-row items-center gap-1.5 self-start py-1.5"
             >
-              <Text className="font-medium text-primary dark:text-primary-300">+ Another payment</Text>
+              <Icon icon={Plus} size={16} tone="accent" />
+              <Txt weight="medium" tone="accent" className="text-sm">
+                Another payment
+              </Txt>
             </Pressable>
           ) : null}
 
-          <Label>Owed to you</Label>
+          <SectionLabel className="mb-2 mt-4">Owed to you</SectionLabel>
           {e.dues.map((d, i) => (
             <View key={i} className="mb-2 flex-row items-center gap-2">
               <View className="flex-1">
-                <SmallInput
-                  value={d.name}
-                  onChangeText={(name) => setDue(i, { name })}
-                  placeholder="Name"
-                />
+                <SmallInput value={d.name} onChangeText={(name) => setDue(i, { name })} placeholder="Name" />
               </View>
               <View className="w-24">
                 <SmallInput
@@ -461,22 +331,29 @@ function ExpenseCard({
               <Pressable
                 onPress={() => onChange({ dues: e.dues.filter((_, j) => j !== i) })}
                 accessibilityLabel="Remove person"
-                className="p-1"
+                hitSlop={8}
               >
-                <Ionicons name="close" size={18} color={colors.muted} />
+                <Icon icon={X} size={18} tone="muted" />
               </Pressable>
             </View>
           ))}
           <Pressable
             onPress={() => onChange({ dues: [...e.dues, { name: "", amount: "" }] })}
-            className="py-1"
+            className="flex-row items-center gap-1.5 self-start py-1.5"
           >
-            <Text className="font-medium text-primary dark:text-primary-300">+ Someone owes you</Text>
+            <Icon icon={Plus} size={16} tone="accent" />
+            <Txt weight="medium" tone="accent" className="text-sm">
+              Someone owes you
+            </Txt>
           </Pressable>
 
-          <Issues issues={e.issues} />
+          {e.issues.map((issue, i) => (
+            <Txt key={i} tone="warn" className="mt-2 text-sm">
+              {issue}
+            </Txt>
+          ))}
         </>
       ) : null}
-    </Card>
+    </View>
   );
 }

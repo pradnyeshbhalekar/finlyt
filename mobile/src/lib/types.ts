@@ -154,3 +154,62 @@ export type LogCommitResult = {
   transfer_count: number;
   ignored_count: number;
 };
+
+// ── Planning: monthly budget, Sunday check-in, daily limit ──────────────────
+
+export type PlannedItem = {
+  id?: number;
+  description: string;
+  amount_paise: number;
+  spent_paise?: number;
+  due_on: string | null;
+  category_id: number | null;
+};
+
+export type PlanStatus = {
+  today: string;
+  month: string;
+  days_left: number;
+  budget_paise: number | null;
+  spent_month_paise: number;
+  planned_total_paise: number;
+  planned_left_paise: number;
+  planned_items: PlannedItem[];
+  plan: { starts_on: string; daily_limit_paise: number; notes: string | null } | null;
+  today_spent_paise: number;
+  /** Negative when over today's limit. Null without a plan. */
+  today_left_paise: number | null;
+  /** Kept aside from days under the limit, for unplanned things. */
+  buffer_paise: number;
+  suggested_daily_limit_paise: number | null;
+  check_in_due: boolean;
+};
+
+export type ProposedPlan = {
+  monthly_budget_paise: number;
+  daily_limit_paise: number;
+  suggested_daily_limit_paise: number;
+  planned_items: PlannedItem[];
+  notes: string | null;
+  issues: string[];
+};
+
+export type ChatMessage = { role: "user" | "finlyt"; text: string };
+
+export type PlanTurn = { reply: string; plan: ProposedPlan | null; model: string };
+
+// ── Phase 5: bank SMS ────────────────────────────────────────────────────────
+
+/** A bank payment picked up from SMS, waiting to be explained. */
+export type BankTxnItem = {
+  id: number;
+  account_id: number;
+  direction: "debit" | "credit";
+  amount_paise: number;
+  channel: string;
+  counterparty: string | null;
+  /** Readable name, e.g. "Zomato" for zomato@hdfcbank. */
+  name: string;
+  occurred_at: string;
+  status: string;
+};

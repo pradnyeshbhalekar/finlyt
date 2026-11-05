@@ -29,30 +29,48 @@ MAX_TXNS = 40
 
 SYSTEM_PROMPT = """\
 You turn what I say about my spending into records for my personal expense tracker. I live in \
-India and amounts are in rupees. I may speak English, Hindi, Marathi or a mix.
+India and amounts are in rupees.
+
+How I write: the way I talk. Lowercase, no punctuation, typos, shorthand, English mixed with \
+Hindi or Marathi, several things in one line. Read it like a friend would:
+- "zomato 450 rahul ke saath, 200 usko dena hai" means lunch on Zomato for 450 with Rahul, and \
+Rahul owes me 200. ("dena hai"/"dega"/"owes" about someone else means they owe me.)
+- Amounts: "1.2k" = 1200, "12 hundred" = 1200, "sawa sau" = 125, "dedh sau" = 150, \
+"dhai sau" = 250, "paune do sau" = 175, "rs 40" / "40/-" / "₹40" = 40.
+- Items are split by commas, "and", "aur", "plus", "then" or new lines. "auto 120 + 30 cash" \
+is ONE auto ride of 150, paid 120 one way and 30 in cash.
+- "split X with A and B" with no amounts means equal shares: each of us pays X/3, and A and B \
+each owe me X/3. "paid for rahul" or "lent rahul 500" means my_share is 0 and Rahul owes the \
+whole amount.
+- Money I owe someone else isn't tracked. Leave it out.
+- Brand or place names (Zomato, Swiggy, DMart, Rapido, Uber, Blinkit, Zepto) are where I spent, \
+and help pick the category.
 
 How to fill the answer:
 - expenses: one per thing I bought or paid for. Don't merge separate items, skip small ones or \
-invent anything I didn't say.
+invent anything I didn't say. If something has no amount, leave it out and ask about it.
+- description: short and natural, like a receipt line: "Lunch at Zomato", "Auto", "Chai", \
+"Groceries at DMart". Title case for names.
 - payments: how each expense was paid. source is a transaction label (T1, T2…) when the money \
 left in that bank transaction, otherwise the exact name of one of my accounts. Half cash, half \
 UPI means two payments. A transaction can be split across several expenses, but never assign \
 more than its amount. Extra paid on top in cash ("plus 30 cash") is a separate Cash payment.
-- If I don't say how I paid and no transaction fits, use my primary account and ask about it \
-in questions.
+- If I don't say how I paid and no transaction fits, use my primary account. "cash"/"nakad" \
+means Cash; "upi", "gpay", "phonepe", "paytm" or "card" means my primary account.
 - total is the full amount paid and equals the sum of payments. my_share is my part. owed_by \
 says who owes me what, and total = my_share + the sum of owed_by. If I treated someone, nobody \
-owes me and my_share = total. If I lent money, my_share is 0 and the whole amount is owed.
+owes me and my_share = total.
 - category: exactly one of my category names. Use Other if none fits.
 - time: when the spending happened, "YYYY-MM-DD HH:MM" in IST. Use the transaction's time when \
-linked to one, otherwise work it out from what I said ("lunch", "this morning", "yesterday"). \
-null if there's no way to tell.
-- settlements: people paying me back. txn is the credit transaction label it arrived as, or \
-null if it was cash.
+linked to one, otherwise work it out from what I said ("lunch", "subah", "this morning", \
+"kal"/"yesterday", "last night"). If I don't say, use now.
+- settlements: people paying me back ("rahul ne 200 wapas diye", "rahul paid me back 200"). \
+txn is the credit transaction label it arrived as, or null if it was cash.
 - transfers: transactions that only move money between my own accounts, or ATM withdrawals.
 - ignored: transactions I tell you to skip.
-- questions: only what you genuinely can't work out. Short. Leave transactions I don't mention \
-alone; they stay pending.
+- questions: at most two, only for what you really can't work out, like a missing amount. \
+Don't ask how I paid or which category; I can fix those myself. Leave transactions I don't \
+mention alone; they stay pending.
 - transcript: the voice note word for word, in the language I spoke. Empty if there's no audio.
 """
 

@@ -216,7 +216,8 @@ def test_propose_rejects_bad_input(client, me, gemini):
 
 
 def test_propose_without_gemini_key(client, me):
-    resp = client.post("/api/log/propose", json={"text": "chai 40 cash"})
+    # Needs Gemini (a person and a split); simple notes don't, see test_simple_text_skips_gemini.
+    resp = client.post("/api/log/propose", json={"text": "lunch 450 with rahul, he owes 200"})
     assert resp.status_code == 503
     assert resp.get_json()["error"]["code"] == "not_configured"
 
@@ -330,3 +331,21 @@ def test_propose_settlements_and_transfers(client, app, me, gemini):
     ]
     assert p["transfers"] == [{"bank_txn_id": atm, "txn_label": "T2", "reason": "ATM"}]
     assert p["ignored"] == []  # T7 doesn't exist
+
+
+def test_simple_text_skips_gemini(client, me):
+    # No Gemini configured or faked: a simple note must still work, parsed by rules.
+    resp = client.post("/api/log/propose", json={"text": "chai 40 cash, auto 120"})
+    assert resp.status_code == 200, resp.get_json()
+    p = resp.get_json()
+    assert p["model"] == "quick"
+    chai, auto = p["expenses"]
+    assert chai["description"] == "Chai"
+    assert chai["category_id"] == me["cat"]["Food"]
+    assert chai["payments"][0]["account_id"] == me["acc"]["Cash"]
+    assert auto["payments"][0]["account_id"] == me["acc"]["Kotak"]
+    assert auto["issues"] == []
+
+    # Anything with people goes to Gemini (which isn't configured here).
+    resp = client.post("/api/log/propose", json={"text": "lunch 450 with rahul, he owes 200"})
+    assert resp.status_code == 503

@@ -7,6 +7,7 @@ import { Platform } from "react-native";
 
 export const REMINDER_CHANNEL = "reminders";
 const TIMES_KEY = "finlyt.reminderTimes";
+const CHECK_IN_KEY = "finlyt.sundayCheckIn";
 
 export type ReminderTime = { hour: number; minute: number };
 
@@ -26,9 +27,21 @@ Notifications.setNotificationHandler({
 });
 
 function messageFor(hour: number): { title: string; body: string } {
-  if (hour < 15) return { title: "Lunch check 🍛", body: "Tag this morning's payments in Finlyt." };
-  if (hour < 21) return { title: "Evening check", body: "Anything since lunch? Log it while you remember." };
-  return { title: "Close the day 🌙", body: "Log the rest of today, cash included." };
+  if (hour < 15) return { title: "Midday check-in", body: "What did you spend on this morning?" };
+  if (hour < 21) return { title: "Evening check-in", body: "Anything since lunch? Log it while you remember." };
+  return { title: "Night check-in", body: "Close the day: log what's left, cash included." };
+}
+
+/** "6 PM check-in" for the latest reminder that has passed today, else null. */
+export function currentCheckIn(times: ReminderTime[], now = new Date()): string | null {
+  const minutes = now.getHours() * 60 + now.getMinutes();
+  const passed = times
+    .filter((t) => t.hour * 60 + t.minute <= minutes)
+    .sort((a, b) => b.hour * 60 + b.minute - (a.hour * 60 + a.minute))[0];
+  if (!passed) return null;
+  const h = passed.hour % 12 === 0 ? 12 : passed.hour % 12;
+  const m = passed.minute ? `:${String(passed.minute).padStart(2, "0")}` : "";
+  return `${h}${m} ${passed.hour < 12 ? "AM" : "PM"} check-in`;
 }
 
 export function formatTime({ hour, minute }: ReminderTime): string {
@@ -42,6 +55,24 @@ export function parseTime(text: string): ReminderTime | null {
   const hour = Number(match[1]);
   const minute = Number(match[2]);
   return hour < 24 && minute < 60 ? { hour, minute } : null;
+}
+
+/** When the Sunday planning check-in reminder fires. Default 7 PM. */
+export const DEFAULT_CHECK_IN: ReminderTime = { hour: 19, minute: 0 };
+
+export async function getCheckInTime(): Promise<ReminderTime> {
+  const saved = await SecureStore.getItemAsync(CHECK_IN_KEY);
+  if (!saved) return DEFAULT_CHECK_IN;
+  try {
+    return JSON.parse(saved) as ReminderTime;
+  } catch {
+    return DEFAULT_CHECK_IN;
+  }
+}
+
+export async function saveCheckInTime(time: ReminderTime): Promise<number> {
+  await SecureStore.setItemAsync(CHECK_IN_KEY, JSON.stringify(time));
+  return scheduleReminders();
 }
 
 export async function getReminderTimes(): Promise<ReminderTime[]> {
@@ -75,7 +106,7 @@ export async function scheduleReminders(times?: ReminderTime[]): Promise<number>
   await Notifications.cancelAllScheduledNotificationsAsync();
   for (const time of list) {
     await Notifications.scheduleNotificationAsync({
-      content: { ...messageFor(time.hour), data: { url: "/log" } },
+      content: { ...messageFor(time.hour), data: { url: "/" } },
       trigger: {
         type: Notifications.SchedulableTriggerInputTypes.DAILY,
         hour: time.hour,
@@ -84,6 +115,22 @@ export async function scheduleReminders(times?: ReminderTime[]): Promise<number>
       },
     });
   }
+  // Sunday check-in with Finlyt: plan the coming week.
+  const checkIn = await getCheckInTime();
+  await Notifications.scheduleNotificationAsync({
+    content: {
+      title: "Sunday check-in",
+      body: "Five minutes with Finlyt to plan the week ahead.",
+      data: { url: "/plan" },
+    },
+    trigger: {
+      type: Notifications.SchedulableTriggerInputTypes.WEEKLY,
+      weekday: 1, // Sunday
+      hour: checkIn.hour,
+      minute: checkIn.minute,
+      channelId: REMINDER_CHANNEL,
+    },
+  });
   return list.length;
 }
 
@@ -96,7 +143,7 @@ export async function saveReminderTimes(times: ReminderTime[]): Promise<number> 
 export async function sendTestReminder(): Promise<void> {
   await ensureNotificationPermission();
   await Notifications.scheduleNotificationAsync({
-    content: { title: "Finlyt test 🔔", body: "Reminders are working.", data: { url: "/log" } },
+    content: { title: "Finlyt", body: "Reminders are working.", data: { url: "/" } },
     trigger: {
       type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
       seconds: 5,
@@ -105,7 +152,7 @@ export async function sendTestReminder(): Promise<void> {
   });
 }
 
-/** Tapping a reminder opens the screen in its `data.url` (the Log tab). */
+/** Tapping a reminder opens the screen in its `data.url` (Home, where logging happens). */
 export function useNotificationRedirect(enabled: boolean) {
   const response = Notifications.useLastNotificationResponse();
   useEffect(() => {
@@ -113,7 +160,8 @@ export function useNotificationRedirect(enabled: boolean) {
     if (response.actionIdentifier !== Notifications.DEFAULT_ACTION_IDENTIFIER) return;
     const url = response.notification.request.content.data?.url;
     if (typeof url === "string") {
-      router.push(url as Href);
+      // Reminders scheduled before the redesign point at the old Log tab.
+      router.navigate((url === "/log" ? "/" : url) as Href);
       void Notifications.clearLastNotificationResponseAsync();
     }
   }, [enabled, response]);

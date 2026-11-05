@@ -11,7 +11,7 @@ from ..db import get_session
 from ..errors import ApiError
 from ..gemini import get_proposer
 from ..schemas import LogCommitIn, ProposeIn
-from ..services import proposals
+from ..services import proposals, quick_parse
 from ..timeutil import now_utc
 from ..validation import parse_body
 
@@ -50,7 +50,10 @@ def _form_input() -> tuple[ProposeIn, bytes | None, str | None]:
 
 @bp.post("/log/propose")
 def propose():
-    """Voice note and/or text in, an editable proposal out. Nothing is saved."""
+    """Voice note and/or text in, an editable proposal out. Nothing is saved.
+
+    Simple text is parsed without AI; anything more goes to Gemini. `model` in the reply says which.
+    """
     if request.mimetype == "multipart/form-data":
         data, audio, mime = _form_input()
     else:
@@ -62,12 +65,17 @@ def propose():
     user_id = current_user().id
     now = now_utc()
     ctx = proposals.load_context(s, user_id, data.txn_ids)
-    answer, model = get_proposer()(
-        system=proposals.SYSTEM_PROMPT,
-        prompt=proposals.build_prompt(ctx, text=data.text, has_audio=bool(audio), now=now),
-        audio=audio,
-        audio_mime=mime,
-    )
+    # Simple notes ("chai 40 cash") are parsed by rules: instant, and no AI involved.
+    quick = None if audio else quick_parse.parse(data.text or "", ctx, now=now)
+    if quick is not None:
+        answer, model = quick, "quick"
+    else:
+        answer, model = get_proposer()(
+            system=proposals.SYSTEM_PROMPT,
+            prompt=proposals.build_prompt(ctx, text=data.text, has_audio=bool(audio), now=now),
+            audio=audio,
+            audio_mime=mime,
+        )
     result = proposals.resolve(s, user_id, ctx, answer, now=now)
     result["model"] = model
     return result

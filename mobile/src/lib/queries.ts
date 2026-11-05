@@ -3,13 +3,18 @@ import { File } from "expo-file-system";
 
 import { api, queryString } from "./api";
 import type {
+  BankTxnItem,
+  ChatMessage,
   Expense,
   ExpenseList,
   LogCommit,
   LogCommitResult,
   Meta,
   NewExpense,
+  PlanStatus,
+  PlanTurn,
   Proposal,
+  ProposedPlan,
   Stats,
 } from "./types";
 
@@ -42,6 +47,8 @@ function useRefreshMoney() {
       queryClient.invalidateQueries({ queryKey: ["stats"] }),
       queryClient.invalidateQueries({ queryKey: ["expenses"] }),
       queryClient.invalidateQueries({ queryKey: ["meta"] }),
+      queryClient.invalidateQueries({ queryKey: ["plan"] }),
+      queryClient.invalidateQueries({ queryKey: ["txns"] }),
     ]);
 }
 
@@ -64,11 +71,14 @@ export function useDeleteExpense() {
 /** Send a voice note and/or text to Gemini. Returns an editable proposal; nothing is saved. */
 export function useProposeLog() {
   return useMutation({
-    mutationFn: ({ text, audioUri }: { text: string; audioUri: string | null }) => {
-      if (!audioUri) return api<Proposal>("/api/log/propose", { method: "POST", body: { text } });
+    mutationFn: ({ text, audioUri, txnIds }: { text: string; audioUri: string | null; txnIds?: number[] }) => {
+      if (!audioUri) {
+        return api<Proposal>("/api/log/propose", { method: "POST", body: { text, txn_ids: txnIds } });
+      }
       const recording = new File(audioUri);
       const form = new FormData();
       form.append("text", text);
+      if (txnIds) form.append("txn_ids", JSON.stringify(txnIds));
       // Expo's fetch (SDK 58) doesn't take React Native's { uri, name, type } parts. It takes
       // any object with name, type and bytes(), so read the recording through expo-file-system.
       const audio = {
@@ -88,5 +98,61 @@ export function useCommitLog() {
     mutationFn: (body: LogCommit) =>
       api<LogCommitResult>("/api/log/commit", { method: "POST", body }),
     onSuccess: refresh,
+  });
+}
+
+/** Today's limit and what's left, the buffer, and this month's budget. */
+export function usePlan() {
+  return useQuery({
+    queryKey: ["plan"],
+    queryFn: () => api<PlanStatus>("/api/plan"),
+    retry: false, // an older server without planning just hides it
+  });
+}
+
+export function usePlanChat() {
+  return useMutation({
+    mutationFn: (messages: ChatMessage[]) =>
+      api<PlanTurn>("/api/plan/chat", { method: "POST", body: { messages } }),
+  });
+}
+
+export function useSavePlan() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (plan: ProposedPlan) =>
+      api<PlanStatus>("/api/plan", {
+        method: "POST",
+        body: {
+          monthly_budget_paise: plan.monthly_budget_paise,
+          daily_limit_paise: plan.daily_limit_paise,
+          planned_items: plan.planned_items.map((i) => ({
+            description: i.description,
+            amount_paise: i.amount_paise,
+            due_on: i.due_on,
+            category_id: i.category_id,
+          })),
+          notes: plan.notes,
+        },
+      }),
+    onSuccess: (status) => queryClient.setQueryData(["plan"], status),
+  });
+}
+
+/** Bank payments from SMS waiting to be explained (last 14 days). */
+export function usePendingTxns() {
+  return useQuery({
+    queryKey: ["txns"],
+    queryFn: () => api<{ items: BankTxnItem[] }>("/api/txns"),
+    retry: false, // older servers don't have it
+  });
+}
+
+export function useResolveTxn() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, status }: { id: number; status: "transfer" | "ignored" | "income" }) =>
+      api<BankTxnItem>(`/api/txns/${id}/resolve`, { method: "POST", body: { status } }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["txns"] }),
   });
 }

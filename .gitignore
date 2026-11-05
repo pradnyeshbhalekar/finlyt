@@ -25,3 +25,8 @@ mobile/ios/
 # tooling
 .vercel/
 .DS_Store
+
+# build output of local Expo modules (mobile/modules/*)
+mobile/modules/*/android/build/
+mobile/modules/*/android/.gradle/
+mobile/modules/*/android/.cxx/

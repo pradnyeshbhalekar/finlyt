@@ -1,8 +1,12 @@
 import { router } from "expo-router";
 import { useState } from "react";
-import { Pressable, ScrollView, Text, View } from "react-native";
+import { Plus, X } from "lucide-react-native";
+import { Pressable, ScrollView, View } from "react-native";
 
-import { Button, Card, Chip, Field, Label } from "@/components/ui";
+import { categoryIcon } from "@/components/category-icon";
+import { KeyboardAware } from "@/components/keyboard";
+import { Button, Chip, Field, Icon, SectionLabel, Txt } from "@/components/ui";
+import { logDraft } from "@/lib/log-draft";
 import { parseRupees } from "@/lib/money";
 import { useCreateExpense, useMeta } from "@/lib/queries";
 import type { NewExpense } from "@/lib/types";
@@ -77,17 +81,25 @@ export default function AddExpense() {
     }
     setError(null);
     try {
-      await create.mutateAsync(body);
+      const expense = await create.mutateAsync(body);
       router.back();
+      logDraft.saved({
+        message: "Saved 1 entry",
+        expenseIds: [expense.id],
+        input: "",
+        questions: [],
+        undoable: true,
+      });
     } catch (e) {
       setError((e as Error).message);
     }
   }
 
   return (
+    <View className="flex-1 bg-bg">
     <ScrollView
-      className="flex-1 bg-white dark:bg-black"
-      contentContainerClassName="p-4 pb-16"
+      className="flex-1 bg-bg"
+      contentContainerClassName="px-5 pb-16 pt-2"
       keyboardShouldPersistTaps="handled"
     >
       <Field
@@ -105,19 +117,20 @@ export default function AddExpense() {
         placeholder="Lunch with Rahul"
       />
 
-      <Label>Category</Label>
+      <SectionLabel className="mb-3 mt-4">Category</SectionLabel>
       <View className="flex-row flex-wrap">
         {categories.map((c) => (
           <Chip
             key={c.id}
-            label={`${c.emoji} ${c.name}`}
+            label={c.name}
+            icon={categoryIcon(c.name)}
             selected={categoryId === c.id}
             onPress={() => setCategoryId(categoryId === c.id ? null : c.id)}
           />
         ))}
       </View>
 
-      <Label>Paid with</Label>
+      <SectionLabel className="mb-3 mt-4">Paid with</SectionLabel>
       <View className="flex-row flex-wrap">
         {accounts.map((a) => (
           <Chip
@@ -128,14 +141,16 @@ export default function AddExpense() {
           />
         ))}
       </View>
-      <Pressable onPress={() => setSplitPayment(!splitPayment)} className="py-2">
-        <Text className="font-medium text-primary dark:text-primary-300">
-          {splitPayment ? "− Paid with one account" : "+ Paid part of it another way (e.g. half cash)"}
-        </Text>
+      <Pressable onPress={() => setSplitPayment(!splitPayment)} className="self-start py-2">
+        <Txt weight="medium" tone="accent">
+          {splitPayment ? "Paid with one account" : "Paid part of it another way, like half cash"}
+        </Txt>
       </Pressable>
       {splitPayment ? (
-        <Card className="mb-2">
-          <Label>Second payment</Label>
+        <View className="mb-2 mt-1 rounded-3xl bg-surface p-4">
+          <Txt weight="medium" tone="muted" className="mb-2 text-sm">
+            Second payment
+          </Txt>
           <View className="flex-row flex-wrap">
             {accounts
               .filter((a) => a.id !== firstAccountId)
@@ -154,10 +169,10 @@ export default function AddExpense() {
             keyboardType="decimal-pad"
             placeholder="How much of the total"
           />
-        </Card>
+        </View>
       ) : null}
 
-      <Label>Someone owes you?</Label>
+      <SectionLabel className="mb-3 mt-4">Someone owes you?</SectionLabel>
       {owes.map((owe, i) => (
         <View key={i} className="flex-row items-center gap-2">
           <Field
@@ -175,25 +190,42 @@ export default function AddExpense() {
             keyboardType="decimal-pad"
             placeholder="₹"
           />
-          <Pressable onPress={() => setOwes(owes.filter((_, j) => j !== i))} className="mb-3 px-2">
-            <Text className="text-lg text-zinc-400">✕</Text>
+          <Pressable
+            onPress={() => setOwes(owes.filter((_, j) => j !== i))}
+            accessibilityLabel="Remove person"
+            hitSlop={8}
+            className="mb-3 px-1"
+          >
+            <Icon icon={X} size={18} tone="muted" />
           </Pressable>
         </View>
       ))}
-      <Pressable onPress={() => setOwes([...owes, { name: "", amount: "" }])} className="py-2">
-        <Text className="font-medium text-primary dark:text-primary-300">+ Add a person</Text>
+      <Pressable
+        onPress={() => setOwes([...owes, { name: "", amount: "" }])}
+        className="flex-row items-center gap-1.5 self-start py-2"
+      >
+        <Icon icon={Plus} size={16} tone="accent" />
+        <Txt weight="medium" tone="accent">
+          Add a person
+        </Txt>
       </Pressable>
 
-      <Label>When</Label>
+      <SectionLabel className="mb-3 mt-4">When</SectionLabel>
       <View className="flex-row">
         <Chip label="Today" selected={!yesterday} onPress={() => setYesterday(false)} />
         <Chip label="Yesterday" selected={yesterday} onPress={() => setYesterday(true)} />
       </View>
 
-      {error ? <Text className="mb-2 mt-2 text-sm text-red-600">{error}</Text> : null}
+      {error ? (
+        <Txt tone="danger" className="mb-2 mt-2 text-sm">
+          {error}
+        </Txt>
+      ) : null}
       <View className="mt-4">
         <Button label="Save" onPress={() => void save()} loading={create.isPending} />
       </View>
     </ScrollView>
+    <KeyboardAware rest={0} />
+    </View>
   );
 }

@@ -1,3 +1,18 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Light theme values; the root view overrides them for Dark and Ink (src/lib/theme.ts). */
+:root {
+  --bg: 255 255 255;
+  --surface: 242 242 239;
+  --line: 229 229 224;
+  --fg: 11 16 51;
+  --muted: 98 102 121;
+  --faint: 154 157 173;
+  --accent: 51 85 255;
+  --accent-soft: 233 237 255;
+  --danger: 217 45 32;
+  --warn-bg: 255 244 224;
+  --warn-fg: 138 75 0;
+}

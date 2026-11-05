@@ -106,14 +106,22 @@ All routes are under `/api` and use JSON. Every route needs `Authorization: Bear
 
 ## Screens
 
-- **Sign in**: a "Continue with Google" button.
-- **Home**: today, week and month spend (my share), money out per account, "N payments to tag", and the owed-to-me total.
-- **Log** (where reminders land): a text box, a tap-to-record mic (mono AAC, 3-minute cap) and "Make expenses". Later: pending payments from SMS (swipe to mark as transfer or ignore). The coin's mood follows the screen: thinking while Gemini reads, happy after a save, sleepy late at night.
-- **Review**: Gemini's proposal as editable cards (description, category, payment legs, who owes what, an on/off switch each), flagged issues, the transcript, Gemini's questions, paybacks and transfer/ignore choices, and Save.
-- **History**: expenses grouped by day, with filters. Tap one to edit or delete it. Quick-add a cash expense.
-- **Owed to me**: balance per person. Settle by cash or by linking a credit.
-- **Import from Claude**: copy the prompt, paste the reply, preview it with day totals, then save.
-- **Settings**: the signed-in account and sign out, reminder times, accounts, categories, SMS start date and permission checks.
+Redesigned on 2026-11-05 to be minimal: one main screen, no tab bar, Lucide icons, Inter, and no emojis anywhere (notifications included).
+
+- **Sign in**: wordmark, one line of copy, "Continue with Google".
+- **Onboarding** (first run after sign-in): "When should I check in?", with the reminder times (default 12:00, 18:00, 23:00; tap to change, X to remove, add more) and the "Check before saving" switch.
+- **Home** (where reminders land): wordmark and settings gear; the current check-in ("6 PM check-in"); today's spend (my share) and count; this month's total and a "₹X owed to you" link; today's entries; "All history". At the bottom: a "Try: …" hint and a chat-style composer. Type the way you talk (or record a voice note), then send.
+  - **Check before saving on**: Gemini's entries appear in a card ("Look right?") with Save, Edit (opens the full editor) or discard (puts the words back in the composer).
+  - **Off**: entries save straight away, and a toast offers Undo, which deletes them and puts the words back. Entries Gemini flags as not adding up are always shown for a check.
+  - If Gemini finds nothing (e.g. "chai" with no amount), its question shows above the composer, with "Add it by hand instead".
+- **Parsing**: simple notes ("chai 40 cash", "petrol 500 kotak, auto 120") are parsed by rules on the backend, instantly and with no AI. Only complex ones (people, splits, paybacks, times, extra amounts, unfamiliar words) go to Gemini. Voice is turned into text on the phone first, so it follows the same path.
+- **Check entries** (`log/review`): the full editor, with description, category chips with icons, payment legs, who owes what, and an on/off switch per entry.
+- **History**: entries grouped by day with day totals. Long-press to delete.
+- **Owed to you**: total plus a per-person breakdown, worked out from open dues.
+- **Settings**: profile; Appearance (Auto / Light / Dark / Ink); Check before saving; Add an entry by hand; Check-in times and a test reminder; Sign out.
+- Later: pending SMS payments at the top of Home ("To log"); tapping one asks "What was Sharma Stores?". Import from Claude.
+
+**Themes** (from the logo canvas): Light (white, ink text), Dark (black) and Ink (navy `#0B1033`). Auto follows the phone's light/dark setting. They're built on semantic Tailwind colours backed by CSS variables (`bg-bg`, `bg-surface`, `text-fg`, `text-muted`, `text-accent`…) set on the root view with NativeWind `vars()` (`src/lib/theme.ts`). Preferences (theme, check before saving, onboarded) are stored on the device in SecureStore (`finlyt.prefs`).
 
 ## SMS pipeline (phase 5)
 
@@ -281,9 +289,13 @@ Real values never get committed. Only the `.env.example` files are in git.
 
 ### Vercel
 
-1. Run `cd backend && npx vercel login && npx vercel link`, with `backend` as the root directory.
-2. Add the env keys above, with production pointing at Neon `main`.
-3. Deploy with `npx vercel --prod`.
+Done on 2026-11-05: project `finlyt-api` (Hobby, team "pradnyeshbhalekar's projects"), region `sin1`, production URL **https://finlyt-api.vercel.app**.
+
+1. `cd backend && npx vercel@65.11.0 login` (device-code flow), then `npx vercel@65.11.0 link --yes --project finlyt-api`. The link creates `backend/.vercel/` and `backend/.env.local` (OIDC token), both gitignored.
+2. Production env: `DATABASE_URL` (pooled, secret), `GOOGLE_WEB_CLIENT_ID`, `ALLOWED_EMAILS`, `GEMINI_API_KEY` (secret). Add or replace one with `printf %s "$VALUE" | npx vercel@65.11.0 env add NAME production --force --sensitive`.
+3. Deploy with `npx vercel@65.11.0 deploy --prod --yes` from `backend/`. It isn't connected to GitHub, so pushes don't deploy.
+4. Logs: `npx vercel@65.11.0 logs requests --json`, or the dashboard.
+5. Migrations run from the Mac (`uv run alembic upgrade head`, using `DATABASE_URL_UNPOOLED`). There's only one Neon database, so local dev and production share data.
 
 ### Phone
 
@@ -323,17 +335,18 @@ finlyt/
 
 ## Build order & status
 
-- [ ] **0. Setup**: git repo ✅, Android SDK ✅, env files ✅, scaffolds ✅, Neon ✅ (migrated), Google Web client ✅, Gemini key ✅. Google Android client ✅. Still to do: Vercel
-- [ ] **1. Backend core**: models and migration ✅, Google sign-in and sessions ✅, per-user defaults ✅, meta, expenses and stats endpoints ✅, tests ✅ (21 passing). First Vercel deploy still to do
+- [x] **0. Setup**: git repo ✅ (github.com/pradnyeshbhalekar/finlyt), Android SDK ✅, env files ✅, scaffolds ✅, Neon ✅ (migrated), Google Web + Android clients ✅, Gemini key ✅, Vercel ✅
+- [x] **1. Backend core**: models and migration ✅, Google sign-in and sessions ✅, per-user defaults ✅, meta, expenses and stats endpoints ✅, tests ✅, deployed to Vercel ✅ (https://finlyt-api.vercel.app)
 - [x] **2. App shell**: sign-in screen ✅, navigation ✅, NativeWind ✅, 12/6/11 reminders ✅, manual add ✅, history ✅, home totals ✅, brand icon/splash/notification icon/logo ✅ (typecheck, lint and Android bundle pass). Installed on the Pixel and sign-in works ✅
 - [x] **3. Gemini logging**: propose and commit endpoints ✅, paybacks ✅, 33 backend tests ✅, live Gemini check with text and an AAC voice note ✅, Log screen with recorder ✅, Review screen ✅, voice note → review → save works on the Pixel ✅
+- [x] **3b. Sunday check-in planning**: monthly budget, planned items, daily limit and buffer; chat with Finlyt; Home strip; Sunday reminder (deployed)
 - [ ] **4. Claude-chat import** (milestone 1: stop using the Claude chat)
-- [ ] **5. SMS auto-fetch**: Kotlin module, Kotak and DNS parsers with tests, pending inbox, auto-linking, transfers (milestone 2)
+- [ ] **5. SMS auto-fetch**: Kotlin module ✅, Kotak and DNS parsers with tests ✅, pending inbox ("To log") ✅, auto-linking ✅, transfers/ignore ✅. Still to do: deploy the backend, install the build, try it with real SMS (milestone 2)
 - [ ] **6. Owed to me**: payback matching, charts, release APK
 
 ## Waiting on
 
-1. Vercel login (at deploy time).
+Nothing right now.
 
 Done 2026-11-05: Android OAuth client; dev build installed on the Pixel over wireless debugging; Google sign-in works on the phone.
 

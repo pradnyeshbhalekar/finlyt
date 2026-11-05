@@ -1,9 +1,21 @@
 // Finlyt's mark and wordmark, drawn from the "Finlyt logo" design canvas.
 // The coin is the app's agent: it changes mood with what the app is doing.
-import { useColorScheme } from "react-native";
+import { useEffect } from "react";
+import { View } from "react-native";
+import Animated, {
+  Easing,
+  useAnimatedStyle,
+  useSharedValue,
+  withRepeat,
+  withSequence,
+  withSpring,
+  withTiming,
+} from "react-native-reanimated";
 import Svg, { Ellipse, G, Path, Rect } from "react-native-svg";
 
-import { colors } from "@/lib/theme";
+import { BRAND, BRAND_EDGE, INK, TINT, useTheme, WHITE } from "@/lib/theme";
+
+const colors = { primary: BRAND, primaryEdge: BRAND_EDGE, tint: TINT, ink: INK, white: WHITE };
 
 export type Mood = "default" | "happy" | "thinking" | "sleepy";
 
@@ -71,7 +83,7 @@ export function Coin({
   mood?: Mood;
   variant?: "badge" | "bare";
 }) {
-  const dark = useColorScheme() === "dark";
+  const { isDark: dark } = useTheme();
   if (variant === "badge") {
     return (
       <Svg width={size} height={size} viewBox="0 0 100 100" accessibilityElementsHidden>
@@ -98,9 +110,94 @@ const WORDMARK =
 const I_DOT =
   "M41.13 -44.14C45.36 -44.14 48.37 -46.92 48.37 -50.77C48.37 -54.62 45.36 -57.36 41.13 -57.36C36.94 -57.36 33.93 -54.62 33.93 -50.77C33.93 -46.92 36.94 -44.14 41.13 -44.14Z";
 
+/** The bare coin + "finlyt", for headers. Blue coin and ink type on Light; white on Dark and Ink. */
+export function Wordmark({ height = 28 }: { height?: number }) {
+  const { isDark: dark } = useTheme();
+  return (
+    <Svg
+      width={(height * 269) / 76}
+      height={height}
+      viewBox="18 12 269 76"
+      accessibilityRole="image"
+      accessibilityLabel="Finlyt"
+    >
+      {dark ? (
+        <CoinShape face={colors.white} rim={colors.tint} ring={colors.tint} eyes={colors.primary} mood="default" />
+      ) : (
+        <CoinShape face={colors.primary} rim={colors.primaryEdge} ring={colors.tint} eyes={colors.white} mood="default" />
+      )}
+      <G transform="translate(99 70.11)">
+        <Path d={WORDMARK} fill={dark ? colors.white : colors.ink} />
+        <Path d={I_DOT} fill={dark ? colors.white : colors.primary} />
+      </G>
+    </Svg>
+  );
+}
+
+/**
+ * Home's header logo: the bare coin + "finlyt", with the coin alive. It bounces and smiles
+ * (happy) when something is logged, glances up while Gemini reads (thinking), and dozes late at
+ * night (sleepy). Same proportions as the canvas's logo: the coin and the type are cut from the
+ * one 269×76 artwork at x = 99.
+ */
+export function HeaderLogo({ height = 30, mood = "default" }: { height?: number; mood?: Mood }) {
+  const { isDark: dark } = useTheme();
+  const scale = useSharedValue(1);
+  const rotate = useSharedValue(0);
+  const lift = useSharedValue(0);
+
+  useEffect(() => {
+    if (mood === "happy") {
+      scale.set(withSequence(withSpring(1.25, { damping: 6, stiffness: 260 }), withSpring(1, { damping: 9 })));
+      rotate.set(
+        withSequence(
+          withTiming(-14, { duration: 120 }),
+          withTiming(10, { duration: 140 }),
+          withTiming(-5, { duration: 120 }),
+          withTiming(0, { duration: 140 }),
+        ),
+      );
+      lift.set(withTiming(0, { duration: 150 }));
+    } else if (mood === "thinking") {
+      // A gentle bob while waiting.
+      lift.set(withRepeat(withSequence(withTiming(-2.5, { duration: 450, easing: Easing.inOut(Easing.quad) }), withTiming(0, { duration: 450, easing: Easing.inOut(Easing.quad) })), -1));
+      scale.set(withTiming(1, { duration: 150 }));
+      rotate.set(withTiming(0, { duration: 150 }));
+    } else {
+      lift.set(withTiming(0, { duration: 200 }));
+      scale.set(withTiming(1, { duration: 200 }));
+      rotate.set(withTiming(0, { duration: 200 }));
+    }
+  }, [mood, scale, rotate, lift]);
+
+  const coinStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: lift.get() }, { scale: scale.get() }, { rotate: `${rotate.get()}deg` }],
+  }));
+
+  return (
+    <View className="flex-row" accessibilityRole="image" accessibilityLabel="Finlyt">
+      <Animated.View style={coinStyle}>
+        <Svg width={(height * 81) / 76} height={height} viewBox="18 12 81 76">
+          {dark ? (
+            <CoinShape face={colors.white} rim={colors.tint} ring={colors.tint} eyes={colors.primary} mood={mood} />
+          ) : (
+            <CoinShape face={colors.primary} rim={colors.primaryEdge} ring={colors.tint} eyes={colors.white} mood={mood} />
+          )}
+        </Svg>
+      </Animated.View>
+      <Svg width={(height * 188) / 76} height={height} viewBox="99 12 188 76">
+        <G transform="translate(99 70.11)">
+          <Path d={WORDMARK} fill={dark ? colors.white : colors.ink} />
+          <Path d={I_DOT} fill={dark ? colors.white : colors.primary} />
+        </G>
+      </Svg>
+    </View>
+  );
+}
+
 /** App icon + "finlyt". Ink wordmark with a blue dot on light screens, all white on dark. */
 export function Logo({ height = 48 }: { height?: number }) {
-  const dark = useColorScheme() === "dark";
+  const { isDark: dark } = useTheme();
   const text = dark ? colors.white : colors.ink;
   return (
     <Svg

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -133,3 +134,47 @@ class LogCommitIn(_In):
         if resolved & paid:
             raise ValueError("a transaction marked as transfer or ignored is also used for a payment")
         return self
+
+
+class ChatMessageIn(_In):
+    role: Literal["user", "finlyt"]
+    text: str = Field(min_length=1, max_length=2000)
+
+
+class PlanChatIn(_In):
+    """The check-in conversation so far (empty to start it)."""
+
+    messages: list[ChatMessageIn] = Field(default_factory=list, max_length=40)
+
+
+class PlannedItemIn(_In):
+    description: str = Field(min_length=1, max_length=200)
+    amount_paise: int = Field(gt=0)
+    due_on: date | None = None
+    category_id: int | None = None
+
+
+class PlanIn(_In):
+    """A plan the user confirmed: this month's budget, the daily limit from today, planned items."""
+
+    monthly_budget_paise: int = Field(gt=0)
+    daily_limit_paise: int = Field(gt=0)
+    planned_items: list[PlannedItemIn] = Field(default_factory=list, max_length=40)
+    notes: str | None = Field(default=None, max_length=500)
+
+
+class SmsIn(_In):
+    """One bank SMS from the phone. Non-bank messages never get uploaded."""
+
+    device_id: str | None = Field(default=None, max_length=64)
+    sender: str = Field(min_length=1, max_length=64)
+    body: str = Field(min_length=1, max_length=2000)
+    received_at: datetime
+
+
+class SmsSyncIn(_In):
+    messages: list[SmsIn] = Field(default_factory=list, max_length=500)
+
+
+class TxnResolveIn(_In):
+    status: Literal["transfer", "ignored", "income", "pending"]
