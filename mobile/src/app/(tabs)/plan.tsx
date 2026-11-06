@@ -5,7 +5,6 @@ import { CalendarClock, Check, MessagesSquare, PiggyBank } from "lucide-react-na
 import { useEffect, useState } from "react";
 import { ActivityIndicator, ScrollView, View } from "react-native";
 import Animated, { FadeInDown } from "react-native-reanimated";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Coin } from "@/components/brand";
 import { CategoryBadge } from "@/components/category-icon";
@@ -33,7 +32,6 @@ function shortDate(iso: string): string {
 const appear = (i: number) => FadeInDown.delay(80 * i).duration(400);
 
 export default function PlanOverview() {
-  const insets = useSafeAreaInsets();
   const { colors } = useTheme();
   const plan = usePlan();
   const meta = useMeta();
@@ -55,7 +53,7 @@ export default function PlanOverview() {
   const categories = new Map((meta.data?.categories ?? []).map((c) => [c.id, c]));
   const month = st ? new Date(`${st.month}T00:00:00`).toLocaleDateString("en-IN", { month: "long" }) : "";
   const footer = (
-    <View className="px-5 pt-2" style={{ paddingBottom: Math.max(insets.bottom, 16) }}>
+    <View className="px-5 pb-3 pt-2">
       <Button
         label={st?.plan ? "Talk to Finlyt" : "Make a plan with Finlyt"}
         icon={MessagesSquare}

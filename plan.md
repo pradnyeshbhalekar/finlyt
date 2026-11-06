@@ -109,11 +109,12 @@ All routes are under `/api` and use JSON. Every route needs `Authorization: Bear
 
 ## Screens
 
-Redesigned on 2026-11-05 to be minimal: one main screen, no tab bar, Lucide icons, Inter, and no emojis anywhere (notifications included).
+Redesigned on 2026-11-05 to be minimal: Lucide icons, Inter, and no emojis anywhere (notifications included). A bottom bar (Home, Ask, Plan, History) was added on 2026-11-06.
 
 - **Sign in**: wordmark, one line of copy, "Continue with Google".
 - **Onboarding** (first run after sign-in): "When should I check in?", with the reminder times (default 12:00, 18:00, 23:00; tap to change, X to remove, add more) and the "Check before saving" switch.
-- **Home** (where reminders land): wordmark and your photo, which opens a menu sheet (Ask Finlyt, Plan, History, Owed, Settings; changed 2026-11-06 from a row of header icons); the current check-in ("6 PM check-in"); today's spend (my share) and count; this month's total and a "₹X owed to you" link; today's entries; "All history". At the bottom: a "Try: …" hint and a chat-style composer. Type the way you talk (or record a voice note), then send.
+- **Bottom bar** (since 2026-11-06): Home, Ask, Plan and History are tabs. Settings, Owed, entries, Review and the check-in chat open on top without it.
+- **Home** (where reminders land): wordmark and your photo, which opens Settings (your profile); the current check-in ("6 PM check-in"); today's spend (my share) and count; this month's total and a "₹X owed to you" link; today's entries; "All history". At the bottom: a "Try: …" hint and a chat-style composer. Type the way you talk (or record a voice note), then send.
   - **Check before saving on**: Gemini's entries appear in a card ("Look right?") with Save, Edit (opens the full editor) or discard (puts the words back in the composer).
   - **Off**: entries save straight away, and a toast offers Undo, which deletes them and puts the words back. Entries Gemini flags as not adding up are always shown for a check.
   - If Gemini finds nothing (e.g. "chai" with no amount), its question shows above the composer, with "Add it by hand instead".

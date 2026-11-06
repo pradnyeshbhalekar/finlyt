@@ -1,16 +1,18 @@
-// Ask Finlyt: questions about your money, answered from your own data. Opened from Home's header,
-// or straight from the Home box when what you typed is a question (passed in as `q`, which starts
-// a new chat). Chats are saved on the server for 10 days; the header's history icon lists them.
+// Ask Finlyt: questions about your money, answered from your own data. A tab in the bottom bar;
+// a question typed in the Home box arrives as `q` and starts a new chat. The tab stays open, so
+// the current chat is still there when you come back. Chats are saved on the server for 10 days;
+// the header's history icon lists them.
 import * as Clipboard from "expo-clipboard";
-import { Stack, useLocalSearchParams } from "expo-router";
+import { router, useLocalSearchParams, useNavigation } from "expo-router";
 import { ArrowUp, History, Mic, Square, SquarePen } from "lucide-react-native";
-import { useEffect, useRef, useState, type ComponentRef } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ComponentRef } from "react";
 import { ActivityIndicator, Platform, Pressable, ScrollView, TextInput, ToastAndroid, View } from "react-native";
 import Animated, { FadeInDown } from "react-native-reanimated";
 
 import { AskHistory } from "@/components/ask-history";
 import { Coin } from "@/components/brand";
 import { KeyboardAware } from "@/components/keyboard";
+import { useTabBarHeight } from "@/components/tab-bar";
 import { IconButton, Txt } from "@/components/ui";
 import { fetchAskThread, useAsk, useMeta } from "@/lib/queries";
 import { useDictation } from "@/lib/speech";
@@ -50,6 +52,8 @@ const SUGGESTIONS = [
 
 export default function Ask() {
   const { q } = useLocalSearchParams<{ q?: string }>();
+  const navigation = useNavigation();
+  const tabBarHeight = useTabBarHeight();
   const { colors } = useTheme();
   const meta = useMeta();
   const ask = useAsk();
@@ -60,7 +64,7 @@ export default function Ask() {
   const [input, setInput] = useState("");
   const [error, setError] = useState<string | null>(null);
   const scroll = useRef<ComponentRef<typeof ScrollView>>(null);
-  const started = useRef(false);
+  const handledQ = useRef<string | null>(null);
   const dictation = useDictation(setInput, setError);
   const hints = [
     ...(meta.data?.categories ?? []).map((c) => c.name),
@@ -68,15 +72,23 @@ export default function Ask() {
     "kitna", "kharcha", "this week", "last month",
   ];
 
-  async function send(text: string) {
+  /** Ask in the open chat, or in a new one when `fresh`. */
+  async function send(text: string, fresh = false) {
     const question = text.trim();
-    if (!question || ask.isPending) return;
-    const next: Message[] = [...messages, { role: "user", text: question }];
+    if (!question) return;
+    if (ask.isPending) {
+      // Still answering the last one: keep this question in the box rather than lose it.
+      setInput(question);
+      return;
+    }
+    const next: Message[] = [...(fresh ? [] : messages), { role: "user", text: question }];
+    const thread = fresh ? null : threadId;
+    if (fresh) setThreadId(null);
     setMessages(next);
     setInput("");
     setError(null);
     try {
-      const turn = await ask.mutateAsync({ text: question, threadId });
+      const turn = await ask.mutateAsync({ text: question, threadId: thread });
       setThreadId(turn.thread_id ?? null);
       setMessages([...next, { role: "finlyt", text: turn.reply, tools_used: turn.tools_used }]);
     } catch (e) {
@@ -107,11 +119,18 @@ export default function Ask() {
     }
   }
 
-  // A question typed on Home arrives as `q`: ask it straight away.
+  // A question typed on Home arrives as `q`: ask it straight away, in a new chat. The param is
+  // cleared afterwards so the same question can come again; the ref stops a second send while the
+  // clear is on its way (and from React's double-run of effects in development).
   useEffect(() => {
-    if (!q || started.current) return;
-    started.current = true;
-    void send(q);
+    if (!q) {
+      handledQ.current = null;
+      return;
+    }
+    if (handledQ.current === q) return;
+    handledQ.current = q;
+    router.setParams({ q: undefined });
+    void send(q, true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [q]);
 
@@ -126,21 +145,21 @@ export default function Ask() {
   const canSend = input.trim().length > 0 && !ask.isPending && !opening && !dictation.listening;
   // Switching chats while an answer is on its way would drop it into the wrong one.
   const busy = ask.isPending || opening;
+  const hasMessages = messages.length > 0;
+
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      headerRight: () => (
+        <View className="mr-2 flex-row">
+          {hasMessages ? <IconButton icon={SquarePen} label="New chat" onPress={newChat} disabled={busy} /> : null}
+          <IconButton icon={History} label="Past chats" onPress={() => setHistoryOpen(true)} disabled={busy} />
+        </View>
+      ),
+    });
+  }, [navigation, hasMessages, busy]);
 
   return (
     <View className="flex-1 bg-bg">
-      <Stack.Screen
-        options={{
-          headerRight: () => (
-            <View className="-mr-2 flex-row">
-              {messages.length > 0 ? (
-                <IconButton icon={SquarePen} label="New chat" onPress={newChat} disabled={busy} />
-              ) : null}
-              <IconButton icon={History} label="Past chats" onPress={() => setHistoryOpen(true)} disabled={busy} />
-            </View>
-          ),
-        }}
-      />
       <AskHistory
         visible={historyOpen}
         currentId={threadId}
@@ -245,7 +264,7 @@ export default function Ask() {
         ) : null}
       </ScrollView>
 
-      <KeyboardAware>
+      <KeyboardAware rest={10} offset={tabBarHeight}>
         <View className="mx-4 mt-2 flex-row items-end rounded-[28px] bg-surface p-1.5">
           <TextInput
             value={input}

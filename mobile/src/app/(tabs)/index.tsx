@@ -5,13 +5,14 @@ import { ChevronRight, CircleAlert, Undo2 } from "lucide-react-native";
 import { useEffect, useState } from "react";
 import { Alert, AppState, Pressable, RefreshControl, ScrollView, View } from "react-native";
 
+import { AvatarButton } from "@/components/avatar";
 import { Coin, HeaderLogo, type Mood } from "@/components/brand";
 import { Composer } from "@/components/composer";
 import { ExpenseRow } from "@/components/expense-row";
 import { KeyboardAware } from "@/components/keyboard";
 import { PlanStrip } from "@/components/plan-strip";
-import { AvatarButton, ProfileMenu } from "@/components/profile-menu";
 import { ProposalCard } from "@/components/proposal-card";
+import { useTabBarHeight } from "@/components/tab-bar";
 import { SmsPermissionCard, ToLog } from "@/components/to-log";
 import { Icon, Screen, SectionLabel, Txt } from "@/components/ui";
 import { isoDate, startOfMonth } from "@/lib/dates";
@@ -160,18 +161,7 @@ export default function Home() {
 
   const iOwe = (balances.data?.i_owe ?? []).reduce((sum, r) => sum + r.amount_paise, 0);
   const { user } = useAuth();
-  const [menuOpen, setMenuOpen] = useState(false);
-  const left = plan.data?.today_left_paise;
-  const planNote =
-    left === null || left === undefined
-      ? null
-      : left >= 0
-        ? `${formatPaise(left)} left today`
-        : `${formatPaise(-left)} over today`;
-  const owedNote =
-    [owed > 0 ? `${formatPaise(owed)} owed to you` : null, iOwe > 0 ? `you owe ${formatPaise(iOwe)}` : null]
-      .filter(Boolean)
-      .join(" · ") || null;
+  const tabBarHeight = useTabBarHeight();
   // The coin dozes while nothing is logged today. A tap anywhere wakes it (and it jumps, see
   // HeaderLogo); it nods off again a few seconds later if there's still nothing.
   const nothingLogged = todays.data !== undefined && items.length === 0;
@@ -268,15 +258,8 @@ export default function Home() {
       <View className="flex-1">
         <View className="flex-row items-center justify-between pl-5 pr-3 pt-2">
           <HeaderLogo height={30} mood={headerMood} splashTarget />
-          <AvatarButton user={user} onPress={() => setMenuOpen(true)} />
+          <AvatarButton user={user} onPress={() => router.push("/settings")} />
         </View>
-        <ProfileMenu
-          visible={menuOpen}
-          onClose={() => setMenuOpen(false)}
-          user={user}
-          planNote={planNote}
-          owedNote={owedNote}
-        />
 
         <ScrollView
           className="flex-1"
@@ -395,7 +378,7 @@ export default function Home() {
           </Pressable>
         </ScrollView>
 
-        <KeyboardAware>
+        <KeyboardAware rest={10} offset={tabBarHeight}>
           <View className="px-4 pt-2">
           {saved ? (
             <View className="mb-2 flex-row items-center gap-3 rounded-2xl bg-fg py-2 pl-4 pr-2">

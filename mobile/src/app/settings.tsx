@@ -6,7 +6,7 @@ import { useEffect, useState } from "react";
 import { ScrollView, useWindowDimensions, View } from "react-native";
 
 import { ReminderEditor } from "@/components/reminder-editor";
-import { Avatar } from "@/components/profile-menu";
+import { Avatar } from "@/components/avatar";
 import { Divider, Icon, Row, SectionLabel, Segmented, SwitchRow, Txt } from "@/components/ui";
 import { useAuth } from "@/lib/auth";
 import { API_URL } from "@/lib/config";

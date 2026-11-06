@@ -25,10 +25,13 @@ export function AskIcon({
   size = 24,
   color = "#000",
   strokeWidth = 1.75,
+  sparkle,
 }: {
   size?: number;
   color?: string;
   strokeWidth?: number;
+  /** The sparkle's colour; the theme's accent blue unless it's drawn on blue. */
+  sparkle?: string;
 }) {
   const { colors } = useTheme();
   const reduceMotion = useReducedMotion();
@@ -54,7 +57,7 @@ export function AskIcon({
       <Path d={BUBBLE} stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" />
       <AnimatedEllipse cx={8.9} cy={12} rx={1.2} ry={EYE_RY} fill={color} animatedProps={eye} />
       <AnimatedEllipse cx={13.1} cy={12} rx={1.2} ry={EYE_RY} fill={color} animatedProps={eye} />
-      <Path d={SPARKLE} fill={colors.accent} />
+      <Path d={SPARKLE} fill={sparkle ?? colors.accent} />
     </Svg>
   );
 }

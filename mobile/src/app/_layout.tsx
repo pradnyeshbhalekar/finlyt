@@ -135,8 +135,7 @@ function RootNavigator({ fontsLoaded }: { fontsLoaded: boolean }) {
     <>
     <Stack screenOptions={{ headerShown: false }}>
       <Stack.Protected guard={signedIn && prefs.onboarded}>
-        <Stack.Screen name="index" />
-        <Stack.Screen name="history" options={{ ...header, title: "History" }} />
+        <Stack.Screen name="(tabs)" />
         <Stack.Screen name="owed" options={{ ...header, title: "Owed" }} />
         <Stack.Screen name="settings" options={{ ...header, title: "Settings" }} />
         <Stack.Screen
@@ -149,8 +148,6 @@ function RootNavigator({ fontsLoaded }: { fontsLoaded: boolean }) {
             contentStyle: { backgroundColor: colors.bg },
           }}
         />
-        <Stack.Screen name="ask" options={{ ...header, title: "Ask Finlyt" }} />
-        <Stack.Screen name="plan/index" options={{ ...header, title: "Plan" }} />
         <Stack.Screen name="plan/chat" options={{ ...header, title: "Check-in" }} />
         <Stack.Screen name="log/review" options={{ ...header, title: "Check entries" }} />
         <Stack.Screen
