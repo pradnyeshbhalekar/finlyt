@@ -1,6 +1,6 @@
 # Finlyt: handoff
 
-Paused on 2026-11-05 (evening session). This file is the checkpoint to resume from. **`plan.md` holds the design, decisions and phase checklist. This file holds the current state, what to do next, and things learned the hard way.**
+Paused on 2026-11-06 (Ask chat history and profile menu; see that section). Before that, 2026-11-05 (evening session). This file is the checkpoint to resume from. **`plan.md` holds the design, decisions and phase checklist. This file holds the current state, what to do next, and things learned the hard way.**
 
 ## Where things stand
 
@@ -148,27 +148,25 @@ The user wants to stay free. Gemini stays primary; **Groq is the fallback** (`fi
 - **Not yet active:** the user hasn't made a Groq key. When they do: put it in the root `.env` → copy to `backend/.env` → `printf %s "$KEY" | npx vercel@65.11.0 env add GROQ_API_KEY production --force --sensitive` → deploy (ask first). Then run the casual-input smoke test against Groq alone to check its Hinglish accuracy.
 - Free-tier notes (Nov 2026; Google no longer publishes numbers, so check AI Studio): Flash-Lite about 500 requests/day; Flash varies. Groq `gpt-oss-120b` about 1,000 requests/day and 200k tokens/day (about 80 Finlyt calls).
 
-## TODO: Ask Finlyt chat history, kept 10 days (user request, 2026-11-05)
+## Ask Finlyt chat history (kept 10 days) + profile menu (2026-11-06) — BACKEND DEPLOYED
 
-Save Ask Finlyt chats for at least 10 days, so the user can look back at an answer instead of asking again (which also spends no AI quota). The interface should feel like Claude's.
+The user asked for Ask chats to be saved for at least 10 days, with a Claude-like interface, and then for Home's three header icons (Ask, Plan, Settings) to move somewhere else. They picked the **profile menu** from four options (bottom bar, side drawer like Claude, spread out in context).
 
-**Backend**
-- Tables:
-  - `ask_threads`: id, user_id, title, created_at, updated_at.
-  - `ask_messages`: id, thread_id, role (`user`/`finlyt`), text, model, tools_used (JSON), created_at.
-  - Add an Alembic migration.
-- `POST /api/ask` takes an optional `thread_id`. Without one it creates a thread, titled from the first question (trimmed to ~40 chars, or a few words from the model on the same call). It stores both turns and returns `thread_id`. The server loads earlier turns from the DB instead of the client resending them.
-- `GET /api/ask/threads` returns id, title, updated_at and the last message preview, newest first. `GET /api/ask/threads/<id>` returns the messages. `DELETE /api/ask/threads/<id>`.
-- **Retention:** delete threads not updated for 10 days. Simplest is a cleanup query at the start of each `/api/ask` and `/threads` call. A Vercel cron is the other option. Keep the number in one setting (`ASK_KEEP_DAYS=10`).
-- Tests: thread creation and continuation, user scoping, retention cutoff.
+**Backend (deployed; migration `c4f8a2e6d913` applied on Neon; 111 tests pass)**
+- Tables `ask_threads` (title, created_at, updated_at; index on user_id, updated_at) and `ask_messages` (role `user`/`finlyt`, text, model, `tools_used` text[]). `services/ask_history.py`.
+- `POST /api/ask` takes `{text, thread_id?}`. Without `thread_id` it starts a chat titled from the question (clipped at a word to 40 chars, no extra AI call). The server sends the last 30 turns to the model. The chat is saved only once there's an answer, so a failed question leaves nothing behind. It returns `thread_id` and `title`, and `tools_used` comes back de-duplicated.
+- **Older app builds still work:** a body with `messages` (the whole chat) is answered as before but not saved. Sending both `text` and `messages`, or neither, gets a 422.
+- `GET /api/ask/threads` returns `{items: [{id, title, updated_at, preview}], keep_days}`, newest first, up to 100. `GET /api/ask/threads/<id>` returns the messages. `DELETE` returns 204. Other users' chats give 404.
+- **Retention:** every Ask route first deletes this user's chats with `updated_at` older than `ASK_KEEP_DAYS` (Settings, default 10; no cron). Messages go by `ON DELETE CASCADE`. Asking again in a chat resets its clock.
+- Live check on a local database with real Gemini: "Kal kitna kharcha hua?" then "aur is hafte?" in the same chat. The second answer used the context (this week's spending). Production `/api/ask/threads` returns 401 without a token (not 404).
+- Gotcha: a model column named `text` hides SQLAlchemy's `text()` in the class body, so `tools_used` uses `server_default="{}"`.
 
-**App (like Claude)**
-- Ask opens on a new chat with suggestion chips, as now.
-- A history icon in the header opens a sheet or drawer with past chats, grouped **Today / Yesterday / Previous 7 days / Older**. Each row shows the title and a time, and there's a search box at the top.
-- Tap a chat to reopen it and keep asking. Swipe or long-press to delete. A **New chat** button sits at the top.
-- Footer note: "Chats are kept for 10 days."
-- Long-press a message to copy it. Show a small "Looked at: spending, people" line under answers from `tools_used`.
-- Questions typed on Home (`?q=`) start a new thread.
+**App (typecheck, lint and `expo export` pass; not yet seen on the phone)**
+- `app/ask.tsx`: keeps `threadId`. Header right has New chat (SquarePen, only once there are messages) and Past chats (`History`). Both are disabled while an answer is on its way, so it can't land in the wrong chat. Questions from Home (`?q=`) start a new chat.
+- `components/ask-history.tsx`: a `Sheet` with New chat and a search box (filters title and preview) at the top. Chats are grouped Today / Yesterday / Previous 7 days / Older, with a time or date. Long-press asks to delete (no swipe). Footer: "Chats are kept for 10 days. Long-press one to delete it." (`keep_days` from the server.)
+- Long-press a message to copy it. A toast shows only below Android 13, which shows its own. Answers show "Looked at: spending, people" from `tools_used` (labels in `LOOKED_AT`).
+- **Profile menu** (`components/profile-menu.tsx`): Home's header is now the logo and the user's Google photo (`Avatar`, expo-image, falling back to the initial). Tapping it opens a sheet with Ask Finlyt, Plan ("₹X left today"), History, Owed ("₹X owed to you · you owe ₹Y") and Settings. Settings' profile row uses the same `Avatar`.
+- To get it on the phone: rebuild the release APK (`./gradlew assembleRelease -PreactNativeArchitectures=arm64-v8a`) and `adb install -r` over wireless debugging. Ask first, because installing restarts the app. **The user asked for no Metro** (2026-11-06): don't run `npx expo start` or go back to the debug build; ship every JS change as a release APK.
 
 ## History of everything, money I owe, MCP + Ask Finlyt (2026-11-05, ~23:30) — DEPLOYED
 

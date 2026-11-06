@@ -276,4 +276,13 @@ export type ActivityPage = { items: ActivityItem[]; next_before: string | null }
 
 // ── Ask Finlyt ───────────────────────────────────────────────────────────────
 
-export type AskTurn = { reply: string; model: string; tools_used: string[] };
+export type AskTurn = { thread_id: number; title: string; reply: string; model: string; tools_used: string[] };
+
+/** A message in a saved chat. `tools_used` is what Finlyt looked at to answer. */
+export type AskMessage = { id: number; role: "user" | "finlyt"; text: string; tools_used: string[]; created_at: string };
+
+export type AskThreadSummary = { id: number; title: string; updated_at: string; preview: string };
+
+export type AskThreadList = { items: AskThreadSummary[]; keep_days: number };
+
+export type AskThread = { id: number; title: string; created_at: string; updated_at: string; messages: AskMessage[] };

@@ -1,18 +1,44 @@
 // Ask Finlyt: questions about your money, answered from your own data. Opened from Home's header,
-// or straight from the Home box when what you typed is a question (passed in as `q`).
-import { useLocalSearchParams } from "expo-router";
-import { ArrowUp, Mic, Square } from "lucide-react-native";
+// or straight from the Home box when what you typed is a question (passed in as `q`, which starts
+// a new chat). Chats are saved on the server for 10 days; the header's history icon lists them.
+import * as Clipboard from "expo-clipboard";
+import { Stack, useLocalSearchParams } from "expo-router";
+import { ArrowUp, History, Mic, Square, SquarePen } from "lucide-react-native";
 import { useEffect, useRef, useState, type ComponentRef } from "react";
-import { ActivityIndicator, Pressable, ScrollView, TextInput, View } from "react-native";
+import { ActivityIndicator, Platform, Pressable, ScrollView, TextInput, ToastAndroid, View } from "react-native";
 import Animated, { FadeInDown } from "react-native-reanimated";
 
+import { AskHistory } from "@/components/ask-history";
 import { Coin } from "@/components/brand";
 import { KeyboardAware } from "@/components/keyboard";
 import { IconButton, Txt } from "@/components/ui";
-import { useAsk, useMeta } from "@/lib/queries";
+import { fetchAskThread, useAsk, useMeta } from "@/lib/queries";
 import { useDictation } from "@/lib/speech";
 import { BRAND, fonts, useTheme, WHITE } from "@/lib/theme";
-import type { ChatMessage } from "@/lib/types";
+
+type Message = { role: "user" | "finlyt"; text: string; tools_used?: string[] };
+
+// What each data tool reads, for the "Looked at" line under an answer.
+const LOOKED_AT: Record<string, string> = {
+  spending_summary: "spending",
+  find_expenses: "expenses",
+  people_balances: "people",
+  budget_status: "budget",
+  bank_payments: "bank payments",
+  recent_activity: "activity",
+  categories_and_accounts: "categories",
+};
+
+function lookedAt(tools: string[] | undefined): string | null {
+  const labels = [...new Set((tools ?? []).map((t) => LOOKED_AT[t] ?? t.replace(/_/g, " ")))];
+  return labels.length ? `Looked at: ${labels.join(", ")}` : null;
+}
+
+async function copy(text: string) {
+  await Clipboard.setStringAsync(text);
+  // Android 13 and later show their own "Copied" confirmation.
+  if (Platform.OS === "android" && Number(Platform.Version) < 33) ToastAndroid.show("Copied", ToastAndroid.SHORT);
+}
 
 const SUGGESTIONS = [
   "Where did my money go this week?",
@@ -27,7 +53,10 @@ export default function Ask() {
   const { colors } = useTheme();
   const meta = useMeta();
   const ask = useAsk();
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [threadId, setThreadId] = useState<number | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [opening, setOpening] = useState(false);
   const [input, setInput] = useState("");
   const [error, setError] = useState<string | null>(null);
   const scroll = useRef<ComponentRef<typeof ScrollView>>(null);
@@ -42,15 +71,39 @@ export default function Ask() {
   async function send(text: string) {
     const question = text.trim();
     if (!question || ask.isPending) return;
-    const next: ChatMessage[] = [...messages, { role: "user", text: question }];
+    const next: Message[] = [...messages, { role: "user", text: question }];
     setMessages(next);
     setInput("");
     setError(null);
     try {
-      const turn = await ask.mutateAsync(next);
-      setMessages([...next, { role: "finlyt", text: turn.reply }]);
+      const turn = await ask.mutateAsync({ text: question, threadId });
+      setThreadId(turn.thread_id ?? null);
+      setMessages([...next, { role: "finlyt", text: turn.reply, tools_used: turn.tools_used }]);
     } catch (e) {
       setError((e as Error).message);
+    }
+  }
+
+  function newChat() {
+    setHistoryOpen(false);
+    setMessages([]);
+    setThreadId(null);
+    setError(null);
+  }
+
+  async function openChat(id: number) {
+    setHistoryOpen(false);
+    if (id === threadId) return;
+    setOpening(true);
+    setError(null);
+    try {
+      const thread = await fetchAskThread(id);
+      setMessages(thread.messages.map((m) => ({ role: m.role, text: m.text, tools_used: m.tools_used })));
+      setThreadId(thread.id);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setOpening(false);
     }
   }
 
@@ -70,10 +123,34 @@ export default function Ask() {
     if (!(await dictation.start(input, hints))) setError("Voice input isn't available on this phone.");
   }
 
-  const canSend = input.trim().length > 0 && !ask.isPending && !dictation.listening;
+  const canSend = input.trim().length > 0 && !ask.isPending && !opening && !dictation.listening;
+  // Switching chats while an answer is on its way would drop it into the wrong one.
+  const busy = ask.isPending || opening;
 
   return (
     <View className="flex-1 bg-bg">
+      <Stack.Screen
+        options={{
+          headerRight: () => (
+            <View className="-mr-2 flex-row">
+              {messages.length > 0 ? (
+                <IconButton icon={SquarePen} label="New chat" onPress={newChat} disabled={busy} />
+              ) : null}
+              <IconButton icon={History} label="Past chats" onPress={() => setHistoryOpen(true)} disabled={busy} />
+            </View>
+          ),
+        }}
+      />
+      <AskHistory
+        visible={historyOpen}
+        currentId={threadId}
+        onClose={() => setHistoryOpen(false)}
+        onOpen={(id) => void openChat(id)}
+        onNew={newChat}
+        onDeleted={(id) => {
+          if (id === threadId) newChat();
+        }}
+      />
       <ScrollView
         ref={scroll}
         className="flex-1"
@@ -81,7 +158,12 @@ export default function Ask() {
         keyboardShouldPersistTaps="handled"
         onContentSizeChange={() => scroll.current?.scrollToEnd({ animated: true })}
       >
-        {messages.length === 0 && !ask.isPending ? (
+        {opening ? (
+          <View className="mt-16 items-center">
+            <ActivityIndicator color={colors.muted} />
+          </View>
+        ) : null}
+        {messages.length === 0 && !ask.isPending && !opening ? (
           <View className="mt-6 px-2">
             <Animated.View entering={FadeInDown.duration(400)}>
               <Coin size={56} variant="bare" />
@@ -109,28 +191,45 @@ export default function Ask() {
           </View>
         ) : null}
 
-        {messages.map((m, i) =>
-          m.role === "finlyt" ? (
-            <View key={i} className="mb-3 flex-row items-end gap-2 pr-8">
-              <Coin size={28} variant="bare" />
-              <View className="rounded-3xl rounded-bl-md bg-surface px-4 py-3">
-                <Txt className="text-base" style={{ lineHeight: 23 }}>
+        {messages.map((m, i) => {
+          if (m.role === "user") {
+            return (
+              <Pressable
+                key={i}
+                onLongPress={() => void copy(m.text)}
+                accessibilityHint="Long-press to copy"
+                className="mb-3 self-end rounded-3xl rounded-br-md px-4 py-3"
+                style={{ backgroundColor: BRAND, maxWidth: "82%" }}
+              >
+                <Txt tone="onBrand" className="text-base" style={{ lineHeight: 23 }}>
                   {m.text}
                 </Txt>
+              </Pressable>
+            );
+          }
+          const looked = lookedAt(m.tools_used);
+          return (
+            <View key={i} className="mb-3">
+              <View className="flex-row items-end gap-2 pr-8">
+                <Coin size={28} variant="bare" />
+                <Pressable
+                  onLongPress={() => void copy(m.text)}
+                  accessibilityHint="Long-press to copy"
+                  className="rounded-3xl rounded-bl-md bg-surface px-4 py-3"
+                >
+                  <Txt className="text-base" style={{ lineHeight: 23 }}>
+                    {m.text}
+                  </Txt>
+                </Pressable>
               </View>
+              {looked ? (
+                <Txt tone="faint" className="ml-9 mt-1 text-xs">
+                  {looked}
+                </Txt>
+              ) : null}
             </View>
-          ) : (
-            <View
-              key={i}
-              className="mb-3 self-end rounded-3xl rounded-br-md px-4 py-3"
-              style={{ backgroundColor: BRAND, maxWidth: "82%" }}
-            >
-              <Txt tone="onBrand" className="text-base" style={{ lineHeight: 23 }}>
-                {m.text}
-              </Txt>
-            </View>
-          ),
-        )}
+          );
+        })}
         {ask.isPending ? (
           <View className="mb-3 flex-row items-end gap-2">
             <Coin size={28} variant="bare" mood="thinking" />

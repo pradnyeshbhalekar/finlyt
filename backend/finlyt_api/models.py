@@ -374,3 +374,34 @@ class Debt(Base):
     created_at: Mapped[datetime] = _created()
 
     person: Mapped[Person] = relationship()
+
+
+class AskThread(Base):
+    """An Ask Finlyt chat. Chats not touched for ASK_KEEP_DAYS are deleted."""
+
+    __tablename__ = "ask_threads"
+    __table_args__ = (Index("ix_ask_threads_user_updated", "user_id", "updated_at"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = _owner()
+    title: Mapped[str] = mapped_column(String(120))
+    created_at: Mapped[datetime] = _created()
+    updated_at: Mapped[datetime] = _updated()
+
+    messages: Mapped[list[AskMessage]] = relationship(
+        order_by="AskMessage.id", cascade="all, delete-orphan", passive_deletes=True
+    )
+
+
+class AskMessage(Base):
+    __tablename__ = "ask_messages"
+    __table_args__ = (CheckConstraint(one_of("role", ("user", "finlyt")), name="role"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    thread_id: Mapped[int] = mapped_column(ForeignKey("ask_threads.id", ondelete="CASCADE"), index=True)
+    role: Mapped[str] = mapped_column(String(8))
+    text: Mapped[str] = mapped_column(Text)
+    # Which model answered and which data tools it looked at (Finlyt's turns only).
+    model: Mapped[str | None] = mapped_column(String(64))
+    tools_used: Mapped[list[str]] = mapped_column(ARRAY(String(64)), server_default="{}")
+    created_at: Mapped[datetime] = _created()

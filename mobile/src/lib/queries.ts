@@ -4,6 +4,8 @@ import { File } from "expo-file-system";
 import { api, queryString } from "./api";
 import type {
   ActivityPage,
+  AskThread,
+  AskThreadList,
   AskTurn,
   Balances,
   BankTxnItem,
@@ -188,9 +190,35 @@ export function useBalances() {
   return useQuery({ queryKey: ["balances"], queryFn: () => api<Balances>("/api/people/balances") });
 }
 
+/** Ask a question in a saved chat, or start one (`threadId` null). The server keeps the history. */
 export function useAsk() {
+  const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (messages: ChatMessage[]) => api<AskTurn>("/api/ask", { method: "POST", body: { messages } }),
+    mutationFn: ({ text, threadId }: { text: string; threadId: number | null }) =>
+      api<AskTurn>("/api/ask", { method: "POST", body: { text, thread_id: threadId ?? undefined } }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["ask-threads"] }),
+  });
+}
+
+/** Past Ask chats, newest first. The server deletes ones untouched for `keep_days`. */
+export function useAskThreads(enabled: boolean) {
+  return useQuery({
+    queryKey: ["ask-threads"],
+    queryFn: () => api<AskThreadList>("/api/ask/threads"),
+    enabled,
+    retry: false,
+  });
+}
+
+export function fetchAskThread(id: number) {
+  return api<AskThread>(`/api/ask/threads/${id}`);
+}
+
+export function useDeleteAskThread() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => api<void>(`/api/ask/threads/${id}`, { method: "DELETE" }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["ask-threads"] }),
   });
 }
 

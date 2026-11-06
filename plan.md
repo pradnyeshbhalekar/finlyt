@@ -69,6 +69,7 @@ On Android, the free sign-in library uses Google's legacy Sign-In SDK. If Google
 | `dues` | Who owes me how much, for which expense |
 | `settlements` | Paybacks against dues, made by credit txn or cash. One credit can settle several dues |
 | `import_batches` | Each Claude-chat import, so it can be undone |
+| `ask_threads` · `ask_messages` | Ask Finlyt chats and their turns (with the model and data tools used). Deleted after `ASK_KEEP_DAYS` (10) without use |
 
 Invariants:
 
@@ -103,6 +104,8 @@ All routes are under `/api` and use JSON. Every route needs `Authorization: Bear
 | `POST /api/sms/sync` | 5 | Raw bank SMS in, new pending txns out |
 | `GET /api/txns` · `POST /api/txns/:id/resolve` | 5 | List pending txns · mark one as transfer, ignore or income |
 | `GET /api/dues` · `POST /api/dues/settle` | 6 | What each person owes me · settle by cash or with a credit txn |
+| `POST /api/ask` | — | Ask Finlyt: `{text, thread_id?}` in, answer and `thread_id` out. The chat is saved; older apps can send `messages` instead (not saved) |
+| `GET /api/ask/threads` · `GET/DELETE /api/ask/threads/:id` | — | Past chats (newest first, with `keep_days`) · one chat's messages · delete it. Chats untouched for 10 days are deleted on any Ask call |
 
 ## Screens
 
@@ -110,7 +113,7 @@ Redesigned on 2026-11-05 to be minimal: one main screen, no tab bar, Lucide icon
 
 - **Sign in**: wordmark, one line of copy, "Continue with Google".
 - **Onboarding** (first run after sign-in): "When should I check in?", with the reminder times (default 12:00, 18:00, 23:00; tap to change, X to remove, add more) and the "Check before saving" switch.
-- **Home** (where reminders land): wordmark and settings gear; the current check-in ("6 PM check-in"); today's spend (my share) and count; this month's total and a "₹X owed to you" link; today's entries; "All history". At the bottom: a "Try: …" hint and a chat-style composer. Type the way you talk (or record a voice note), then send.
+- **Home** (where reminders land): wordmark and your photo, which opens a menu sheet (Ask Finlyt, Plan, History, Owed, Settings; changed 2026-11-06 from a row of header icons); the current check-in ("6 PM check-in"); today's spend (my share) and count; this month's total and a "₹X owed to you" link; today's entries; "All history". At the bottom: a "Try: …" hint and a chat-style composer. Type the way you talk (or record a voice note), then send.
   - **Check before saving on**: Gemini's entries appear in a card ("Look right?") with Save, Edit (opens the full editor) or discard (puts the words back in the composer).
   - **Off**: entries save straight away, and a toast offers Undo, which deletes them and puts the words back. Entries Gemini flags as not adding up are always shown for a check.
   - If Gemini finds nothing (e.g. "chai" with no amount), its question shows above the composer, with "Add it by hand instead".
@@ -118,6 +121,7 @@ Redesigned on 2026-11-05 to be minimal: one main screen, no tab bar, Lucide icon
 - **Check entries** (`log/review`): the full editor, with description, category chips with icons, payment legs, who owes what, and an on/off switch per entry.
 - **History**: entries grouped by day with day totals. Long-press to delete.
 - **Owed to you**: total plus a per-person breakdown, worked out from open dues.
+- **Ask Finlyt**: a chat about your money. Past chats sit behind the header's history icon (grouped by day, searchable, long-press to delete, kept 10 days), next to New chat. Long-press a message to copy it.
 - **Settings**: profile; Appearance (Auto / Light / Dark / Ink); Check before saving; Add an entry by hand; Check-in times and a test reminder; Sign out.
 - Later: pending SMS payments at the top of Home ("To log"); tapping one asks "What was Sharma Stores?". Import from Claude.
 

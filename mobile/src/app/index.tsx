@@ -1,19 +1,19 @@
 // Home: today's check-in. Type (or say) what you spent at the bottom; Gemini turns it into
 // entries that are saved straight away or shown for a quick check, per Settings.
 import { router, useLocalSearchParams } from "expo-router";
-import { ChevronRight, CircleAlert, Settings, Target, Undo2 } from "lucide-react-native";
+import { ChevronRight, CircleAlert, Undo2 } from "lucide-react-native";
 import { useEffect, useState } from "react";
 import { Alert, AppState, Pressable, RefreshControl, ScrollView, View } from "react-native";
 
-import { AskIcon } from "@/components/ask-icon";
 import { Coin, HeaderLogo, type Mood } from "@/components/brand";
 import { Composer } from "@/components/composer";
 import { ExpenseRow } from "@/components/expense-row";
 import { KeyboardAware } from "@/components/keyboard";
 import { PlanStrip } from "@/components/plan-strip";
+import { AvatarButton, ProfileMenu } from "@/components/profile-menu";
 import { ProposalCard } from "@/components/proposal-card";
 import { SmsPermissionCard, ToLog } from "@/components/to-log";
-import { Icon, IconButton, Screen, SectionLabel, Txt } from "@/components/ui";
+import { Icon, Screen, SectionLabel, Txt } from "@/components/ui";
 import { isoDate, startOfMonth } from "@/lib/dates";
 import {
   entryCount,
@@ -32,6 +32,7 @@ import {
   getReminderTimes,
   type ReminderTime,
 } from "@/lib/notifications";
+import { useAuth } from "@/lib/auth";
 import { usePrefs } from "@/lib/prefs";
 import {
   useBalances,
@@ -158,6 +159,19 @@ export default function Home() {
   const owed = month.data?.open_dues_paise ?? 0;
 
   const iOwe = (balances.data?.i_owe ?? []).reduce((sum, r) => sum + r.amount_paise, 0);
+  const { user } = useAuth();
+  const [menuOpen, setMenuOpen] = useState(false);
+  const left = plan.data?.today_left_paise;
+  const planNote =
+    left === null || left === undefined
+      ? null
+      : left >= 0
+        ? `${formatPaise(left)} left today`
+        : `${formatPaise(-left)} over today`;
+  const owedNote =
+    [owed > 0 ? `${formatPaise(owed)} owed to you` : null, iOwe > 0 ? `you owe ${formatPaise(iOwe)}` : null]
+      .filter(Boolean)
+      .join(" · ") || null;
   // The coin dozes while nothing is logged today. A tap anywhere wakes it (and it jumps, see
   // HeaderLogo); it nods off again a few seconds later if there's still nothing.
   const nothingLogged = todays.data !== undefined && items.length === 0;
@@ -254,12 +268,15 @@ export default function Home() {
       <View className="flex-1">
         <View className="flex-row items-center justify-between pl-5 pr-3 pt-2">
           <HeaderLogo height={30} mood={headerMood} splashTarget />
-          <View className="flex-row">
-            <IconButton icon={AskIcon} label="Ask Finlyt" onPress={() => router.push("/ask")} />
-            <IconButton icon={Target} label="Plan" onPress={() => router.push("/plan")} />
-            <IconButton icon={Settings} label="Settings" onPress={() => router.push("/settings")} />
-          </View>
+          <AvatarButton user={user} onPress={() => setMenuOpen(true)} />
         </View>
+        <ProfileMenu
+          visible={menuOpen}
+          onClose={() => setMenuOpen(false)}
+          user={user}
+          planNote={planNote}
+          owedNote={owedNote}
+        />
 
         <ScrollView
           className="flex-1"

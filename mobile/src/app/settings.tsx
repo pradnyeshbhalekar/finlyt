@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { ScrollView, useWindowDimensions, View } from "react-native";
 
 import { ReminderEditor } from "@/components/reminder-editor";
+import { Avatar } from "@/components/profile-menu";
 import { Divider, Icon, Row, SectionLabel, Segmented, SwitchRow, Txt } from "@/components/ui";
 import { useAuth } from "@/lib/auth";
 import { API_URL } from "@/lib/config";
@@ -70,16 +71,10 @@ export default function Settings() {
     setReminderNote("A test reminder arrives in 5 seconds.");
   }
 
-  const initial = (user?.name ?? user?.email ?? "?").trim().charAt(0).toUpperCase();
-
   return (
     <ScrollView className="flex-1 bg-bg" contentContainerClassName="px-5 pb-16">
       <View className="mt-2 flex-row items-center gap-4">
-        <View className="h-12 w-12 items-center justify-center rounded-full bg-brand">
-          <Txt weight="semibold" tone="onBrand" className="text-lg">
-            {initial}
-          </Txt>
-        </View>
+        <Avatar user={user} size={48} />
         <View className="flex-1">
           <Txt weight="semibold" className="text-lg" numberOfLines={1}>
             {user?.name ?? "Signed in"}
