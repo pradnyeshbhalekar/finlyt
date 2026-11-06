@@ -1,6 +1,6 @@
 # Finlyt: handoff
 
-Paused on 2026-11-07: month reports, money memory and Import from AI are built and pushed but NOT deployed (Neon + Vercel), and not on the phone. Bigger days and the chosen check-in day are deployed. Before that, 2026-11-06 and 2026-11-05. This file is the checkpoint to resume from. **`plan.md` holds the design, decisions and phase checklist. This file holds the current state, what to do next, and things learned the hard way.**
+Paused on 2026-11-07: month reports, money memory and Import from AI are built, pushed and installed on the phone, but the backend is NOT deployed (Neon + Vercel). Bigger days and the chosen check-in day are deployed. Before that, 2026-11-06 and 2026-11-05. This file is the checkpoint to resume from. **`plan.md` holds the design, decisions and phase checklist. This file holds the current state, what to do next, and things learned the hard way.**
 
 ## Where things stand
 
@@ -160,14 +160,14 @@ The user wants Ask to work like Claude's leaked "Personal Finance": ask "Where d
 - `ask_messages.extras` (JSONB) stores report, followups and memory_updates for history. Gotcha again: `text` is a column in AskMessage, so the JSON default lives in a module-level `EMPTY_JSON`.
 - **Live-test lessons:** Gemini sometimes sends the answer twice in two text parts → `_final_text` takes the last part. It saved the commitment twice under slightly different titles → `title_key`. It did its own (wrong) 20% maths → the context now gives the numbers. It answered English in Hinglish → "reply in the language of my latest message". After the fixes, the user's own scenario ran right: on a raise the payment stepped up by itself, and the reply said what was left after commitments hadn't changed.
 
-**App (typecheck, lint and `expo export` pass; APK built 01:36 with all of this, not installed)**
+**App (typecheck, lint and `expo export` pass; APK rebuilt 01:45 and installed on the Pixel 01:46; pushed `a932951`)**
 - Theme token `chart` (light `#3355FF`, dark `#5C78FF`, ink `#6A84FF`), checked with the dataviz validator against each background. The accent colours failed as chart marks.
 - `components/charts.tsx`: `DailyBars` (thin columns with a 2px gap, 4px rounded tops, a hairline baseline and limit line, tap a day; the biggest day is labelled until you do), `RankedBars` (one hue, a tick for "usual" with a legend), `Meter`.
 - `components/month-report.tsx`: `ReportCard` (under Ask's answer: total, comparison, top categories, notes, "See the full report") and `ReportView`. `app/report.tsx` has ‹ › months and ask chips. Home's "₹X this month" and Plan open it.
 - `app/memory.tsx` "What Finlyt remembers": income (tap to edit), commitments with rules, payoff meter and months left, Pause/Forget, and notes. Linked from Plan and Settings. `components/memory-updates.tsx` shows "Remembered: …" under answers in Ask and the check-in.
 - Ask shows follow-up chips after a report; `usePlanChat` sends only role/text.
 
-**To ship:** Neon `alembic upgrade head` (two migrations) → Vercel deploy → install the APK. The permission system blocked the Neon migration as a production deploy; the user has to say "deploy".
+**Still to ship: the backend.** Neon `alembic upgrade head` (two migrations: `e4a7c2b9d6f1`, `f2c8d5a1b7e3`) → Vercel deploy. The permission system blocked the Neon migration as a production deploy, so the user has to say "deploy". Until then, the installed app's Report, Memory and Import screens get 404s (bigger days, the check-in day and the answer options work, being already deployed).
 
 ## Import from an AI chat, and the coin on every onboarding step (2026-11-07) — NOT DEPLOYED YET
 
