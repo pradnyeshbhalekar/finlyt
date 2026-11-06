@@ -351,7 +351,7 @@ finlyt/
 - [x] **2. App shell**: sign-in screen ✅, navigation ✅, NativeWind ✅, 12/6/11 reminders ✅, manual add ✅, history ✅, home totals ✅, brand icon/splash/notification icon/logo ✅ (typecheck, lint and Android bundle pass). Installed on the Pixel and sign-in works ✅
 - [x] **3. Gemini logging**: propose and commit endpoints ✅, paybacks ✅, 33 backend tests ✅, live Gemini check with text and an AAC voice note ✅, Log screen with recorder ✅, Review screen ✅, voice note → review → save works on the Pixel ✅
 - [x] **3b. Weekly check-in planning**: monthly budget, planned items, daily limit and buffer; chat with Finlyt; Home strip; weekly reminder (deployed). 2026-11-07: usual + bigger days, check-in day of your choice, answers to tap, editable plan card (built, not deployed yet)
-- [x] **4. Import from an AI chat** (Claude, ChatGPT, Gemini): prompt, preview with duplicates and SMS links, batch save, undo; onboarding step and Settings (built 2026-11-07, deploy pending)
+- [x] **4. Import from an AI chat** (Claude, ChatGPT, Gemini): prompt, preview with duplicates and SMS links, batch save, undo; onboarding step (optional, with a skip) and Settings (deployed 2026-11-07)
 - [ ] **5. SMS auto-fetch**: Kotlin module ✅, Kotak and DNS parsers with tests ✅, pending inbox ("To log") ✅, auto-linking ✅, transfers/ignore ✅. Still to do: deploy the backend, install the build, try it with real SMS (milestone 2)
 - [ ] **6. Owed to me**: payback matching, charts, release APK
 

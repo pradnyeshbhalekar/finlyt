@@ -4,7 +4,7 @@
 // 3. Check the preview (already-logged entries come unticked) and import. One tap undoes it.
 // Opened from onboarding and from Settings.
 import * as Clipboard from "expo-clipboard";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { Check, ClipboardPaste, Copy, ExternalLink, Undo2 } from "lucide-react-native";
 import { useMemo, useState } from "react";
 import { ActivityIndicator, Linking, Pressable, ScrollView, SectionList, TextInput, View } from "react-native";
@@ -71,6 +71,8 @@ function detail(e: ImportEntry, accountName: (id: number) => string): string {
 }
 
 export default function ImportScreen() {
+  const { from } = useLocalSearchParams<{ from?: string }>();
+  const fromOnboarding = from === "onboarding";
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
   const meta = useMeta();
@@ -416,6 +418,10 @@ export default function ImportScreen() {
             loading={read.isPending}
             disabled={text.trim().length < 2}
           />
+          {/* Importing is optional: from onboarding, skipping goes on to the next step. */}
+          {fromOnboarding ? (
+            <Button label="Skip, I don't have one" variant="ghost" onPress={() => router.back()} className="mt-1" />
+          ) : null}
         </View>
       </KeyboardAware>
     </View>

@@ -1,6 +1,6 @@
 # Finlyt: handoff
 
-Paused on 2026-11-07: month reports, money memory and Import from AI are built, pushed and installed on the phone, but the backend is NOT deployed (Neon + Vercel). Bigger days and the chosen check-in day are deployed. Before that, 2026-11-06 and 2026-11-05. This file is the checkpoint to resume from. **`plan.md` holds the design, decisions and phase checklist. This file holds the current state, what to do next, and things learned the hard way.**
+Paused on 2026-11-07: month reports, money memory, Import from AI, bigger days and the chosen check-in day are all deployed, pushed and on the phone. Bigger days and the chosen check-in day are deployed. Before that, 2026-11-06 and 2026-11-05. This file is the checkpoint to resume from. **`plan.md` holds the design, decisions and phase checklist. This file holds the current state, what to do next, and things learned the hard way.**
 
 ## Where things stand
 
@@ -148,7 +148,7 @@ The user wants to stay free. Gemini stays primary; **Groq is the fallback** (`fi
 - **Not yet active:** the user hasn't made a Groq key. When they do: put it in the root `.env` → copy to `backend/.env` → `printf %s "$KEY" | npx vercel@65.11.0 env add GROQ_API_KEY production --force --sensitive` → deploy (ask first). Then run the casual-input smoke test against Groq alone to check its Hinglish accuracy.
 - Free-tier notes (Nov 2026; Google no longer publishes numbers, so check AI Studio): Flash-Lite about 500 requests/day; Flash varies. Groq `gpt-oss-120b` about 1,000 requests/day and 200k tokens/day (about 80 Finlyt calls).
 
-## Month reports ("where did my money go") and money memory (2026-11-07) — NOT DEPLOYED YET
+## Month reports ("where did my money go") and money memory (2026-11-07) — DEPLOYED, ON THE PHONE
 
 The user wants Ask to work like Claude's leaked "Personal Finance": ask "Where did my money go this month?" and get a full dashboard, then follow up with "Is that more than usual?" or "Anything else I'm missing?". It should also answer "am I spending more than I earn / how much should I save". While this was being built they added memory: a fixed monthly payment to family (paying off something they bought) that steps up once their salary passes a threshold. Finlyt should remember that, change the amount when the salary changes, and say how saving should grow with a raise. (The user's real figures are kept out of this public repo; tests and examples use a made-up "₹3,000 a month to a sister for a ₹24,000 laptop, ₹6,000 once salary is ₹55,000".)
 
@@ -167,9 +167,10 @@ The user wants Ask to work like Claude's leaked "Personal Finance": ask "Where d
 - `app/memory.tsx` "What Finlyt remembers": income (tap to edit), commitments with rules, payoff meter and months left, Pause/Forget, and notes. Linked from Plan and Settings. `components/memory-updates.tsx` shows "Remembered: …" under answers in Ask and the check-in.
 - Ask shows follow-up chips after a report; `usePlanChat` sends only role/text.
 
-**Still to ship: the backend.** Neon `alembic upgrade head` (two migrations: `e4a7c2b9d6f1`, `f2c8d5a1b7e3`) → Vercel deploy. The permission system blocked the Neon migration as a production deploy, so the user has to say "deploy". Until then, the installed app's Report, Memory and Import screens get 404s (bigger days, the check-in day and the answer options work, being already deployed).
+**Deployed 2026-11-07 ~02:00** at the user's "deploy it": Neon is at `f2c8d5a1b7e3` and Vercel is live. `/api/reports/month`, `/api/memory` and `/api/import/*` answer 401 without a token. (One `/api/import/batches` request right after the deploy gave Flask's 404, and the next gave 401: a cold instance, not a missing route.)
+- **Import is optional** (user request): onboarding's step says so and offers "Import from a chat" or "Skip, I don't have one" (stacked). The Import screen opened from onboarding (`?from=onboarding`) has its own "Skip, I don't have one" (`router.back()`).
 
-## Import from an AI chat, and the coin on every onboarding step (2026-11-07) — NOT DEPLOYED YET
+## Import from an AI chat, and the coin on every onboarding step (2026-11-07) — DEPLOYED, ON THE PHONE
 
 Phase 4, broadened from "Claude chat import" to any AI chat (Claude, ChatGPT, Gemini, other), at the user's request. It's offered in onboarding and in Settings.
 

@@ -298,6 +298,9 @@ export default function Onboarding() {
             If you&apos;ve been telling Claude, ChatGPT or Gemini what you spent, Finlyt can bring it all in, splits
             and paybacks included. Your weekly check-ins get better with it.
           </Lead>
+          <Txt tone="muted" className="mt-3 text-sm">
+            This is optional. Skip it if you haven&apos;t, and you can always import later from Settings.
+          </Txt>
         </In>
         <View className="mt-6">
           <In i={3}>
@@ -313,16 +316,15 @@ export default function Onboarding() {
       </>
     );
     actions = (
-      <View className="flex-row gap-3">
-        <Button label="Not now" variant="secondary" onPress={next} className="flex-1" />
+      <View className="gap-3">
         <Button
-          label="Import"
+          label="Import from a chat"
           onPress={() => {
             next(); // coming back from the import lands on the next step
-            router.push("/import");
+            router.push({ pathname: "/import", params: { from: "onboarding" } });
           }}
-          className="flex-1"
         />
+        <Button label="Skip, I don't have one" variant="ghost" onPress={next} />
       </View>
     );
   } else {
