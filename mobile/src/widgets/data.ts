@@ -99,7 +99,7 @@ export async function fetchWidgetData(): Promise<WidgetData> {
     const data: WidgetData = {
       signedIn: true,
       todaySpent: plan.plan ? plan.today_spent_paise : (week[6]?.spend ?? 0),
-      dailyLimit: plan.plan?.daily_limit_paise ?? null,
+      dailyLimit: plan.today_limit_paise ?? plan.plan?.daily_limit_paise ?? null,
       toLog: txns.items.length,
       week,
       reminders,

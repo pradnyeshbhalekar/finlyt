@@ -13,19 +13,24 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    SmallInteger,
     String,
     Text,
     UniqueConstraint,
     func,
     text,
 )
-from sqlalchemy.dialects.postgresql import ARRAY
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .db import Base
 
 TXN_STATUSES = ("pending", "logged", "transfer", "payback", "income", "refund", "ignored")
 SMS_STATUSES = ("pending", "parsed", "duplicate", "not_txn", "failed")
+
+
+# Defined out here: inside AskMessage, `text` is a column and hides SQLAlchemy's text().
+EMPTY_JSON = text("'{}'::jsonb")
 
 
 def one_of(column: str, values: tuple[str, ...]) -> str:
@@ -54,6 +59,9 @@ class User(Base):
     picture_url: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = _created()
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # The weekly planning check-in's day, Monday 0 to Sunday 6 (the time lives on the phone,
+    # which sends the reminder). Weeks for "bigger days" start on this day.
+    check_in_weekday: Mapped[int] = mapped_column(SmallInteger, server_default=text("6"))
 
 
 class AuthSession(Base):
@@ -104,6 +112,8 @@ class Category(Base):
 
 
 class ImportBatch(Base):
+    """One import from an AI chat (Claude, ChatGPT, Gemini…). Deleting it undoes the import."""
+
     __tablename__ = "import_batches"
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -279,6 +289,9 @@ class Settlement(Base):
         ForeignKey("bank_txns.id", ondelete="SET NULL"), index=True
     )
     settled_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    import_batch_id: Mapped[int | None] = mapped_column(
+        ForeignKey("import_batches.id", ondelete="CASCADE"), index=True
+    )
     created_at: Mapped[datetime] = _created()
 
     due: Mapped[Due] = relationship(back_populates="settlements")
@@ -302,22 +315,28 @@ class Budget(Base):
 
 
 class SpendingPlan(Base):
-    """What a check-in with Finlyt agreed: a daily limit for everyday spending from `starts_on`.
+    """What a check-in with Finlyt agreed: limits for everyday spending from `starts_on`.
 
-    The plan in effect on a day is the latest one that started on or before it. Money not spent
-    under the limit is kept aside for unplanned things (the buffer), not added to later days.
+    `daily_limit_paise` is the usual day. Optionally a few bigger days a week get a higher limit
+    (`big_day_limit_paise`, `big_days_per_week`): a day that goes past the usual limit uses one up,
+    while that week has some left. The plan in effect on a day is the latest one that started on
+    or before it. Money not spent under a day's limit is kept aside for unplanned things (the
+    buffer), not added to later days.
     """
 
     __tablename__ = "plans"
     __table_args__ = (
         UniqueConstraint("user_id", "starts_on", name="uq_plans_user_starts_on"),
         CheckConstraint("daily_limit_paise > 0", name="daily_limit_positive"),
+        CheckConstraint("big_days_per_week BETWEEN 0 AND 6", name="big_days_range"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = _owner()
     starts_on: Mapped[date] = mapped_column(Date)
     daily_limit_paise: Mapped[int] = mapped_column(BigInteger)
+    big_day_limit_paise: Mapped[int | None] = mapped_column(BigInteger)
+    big_days_per_week: Mapped[int] = mapped_column(SmallInteger, server_default=text("0"))
     notes: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = _created()
     updated_at: Mapped[datetime] = _updated()
@@ -371,6 +390,9 @@ class Debt(Base):
     # The expense created when it was paid back.
     expense_id: Mapped[int | None] = mapped_column(ForeignKey("expenses.id", ondelete="SET NULL"))
     settled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    import_batch_id: Mapped[int | None] = mapped_column(
+        ForeignKey("import_batches.id", ondelete="CASCADE"), index=True
+    )
     created_at: Mapped[datetime] = _created()
 
     person: Mapped[Person] = relationship()
@@ -404,4 +426,57 @@ class AskMessage(Base):
     # Which model answered and which data tools it looked at (Finlyt's turns only).
     model: Mapped[str | None] = mapped_column(String(64))
     tools_used: Mapped[list[str]] = mapped_column(ARRAY(String(64)), server_default="{}")
+    # Answers to tap when Finlyt asked a question back (the user can also type their own).
+    options: Mapped[list[str]] = mapped_column(ARRAY(String(120)), server_default="{}")
+    # What came with the answer: a month report to show, follow-up questions, memory it saved.
+    extras: Mapped[dict] = mapped_column(JSONB, server_default=EMPTY_JSON)
+    created_at: Mapped[datetime] = _created()
+
+
+class MoneyProfile(Base):
+    """What Finlyt remembers about my money in general: my monthly income (take-home)."""
+
+    __tablename__ = "money_profiles"
+
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    monthly_income_paise: Mapped[int | None] = mapped_column(BigInteger)
+    income_note: Mapped[str | None] = mapped_column(String(200))
+    updated_at: Mapped[datetime] = _updated()
+
+
+class Commitment(Base):
+    """Money I've promised every month, like ₹3,000 to my sister for a ₹24,000 laptop.
+
+    `rules` change the amount with my income: [{"min_income_paise": 5500000, "monthly_paise":
+    600000}] means ₹6,000 a month once I earn ₹55,000. `match_words` are words in a logged
+    expense that mean a payment towards it, so progress towards `total_paise` can be counted.
+    """
+
+    __tablename__ = "commitments"
+    __table_args__ = (CheckConstraint("monthly_paise > 0", name="monthly_positive"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = _owner()
+    title: Mapped[str] = mapped_column(String(120))
+    monthly_paise: Mapped[int] = mapped_column(BigInteger)
+    category_id: Mapped[int | None] = mapped_column(ForeignKey("categories.id", ondelete="SET NULL"))
+    total_paise: Mapped[int | None] = mapped_column(BigInteger)
+    paid_before_paise: Mapped[int] = mapped_column(BigInteger, server_default=text("0"))
+    match_words: Mapped[list[str]] = mapped_column(ARRAY(String(40)), server_default="{}")
+    rules: Mapped[list] = mapped_column(JSONB, server_default=text("'[]'::jsonb"))
+    starts_on: Mapped[date] = mapped_column(Date)
+    active: Mapped[bool] = mapped_column(Boolean, server_default=text("true"))
+    notes: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = _created()
+    updated_at: Mapped[datetime] = _updated()
+
+
+class MoneyNote(Base):
+    """Anything else worth remembering about my money ("salary comes on the 1st")."""
+
+    __tablename__ = "money_notes"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = _owner()
+    text: Mapped[str] = mapped_column(String(300))
     created_at: Mapped[datetime] = _created()

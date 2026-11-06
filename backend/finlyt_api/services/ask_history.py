@@ -61,6 +61,8 @@ def add_turn(
     reply: str,
     model: str | None,
     tools_used: list[str],
+    options: list[str] | None = None,
+    extras: dict | None = None,
 ) -> AskThread:
     """Store a question and its answer, starting a new chat if there's no thread yet."""
     now = now_utc()
@@ -70,7 +72,7 @@ def add_turn(
     thread.updated_at = now
     thread.messages.append(AskMessage(role="user", text=question, created_at=now))
     thread.messages.append(
-        AskMessage(role="finlyt", text=reply, model=model, tools_used=tools_used, created_at=now)
+        AskMessage(role="finlyt", text=reply, model=model, tools_used=tools_used, options=options or [], extras=extras or {}, created_at=now)
     )
     s.flush()
     return thread
@@ -107,6 +109,10 @@ def message_json(m: AskMessage) -> dict[str, Any]:
         "role": m.role,
         "text": m.text,
         "tools_used": list(m.tools_used or []),
+        "options": list(m.options or []),
+        "report": (m.extras or {}).get("report"),
+        "followups": (m.extras or {}).get("followups", []),
+        "memory_updates": (m.extras or {}).get("memory_updates", []),
         "created_at": to_ist_iso(m.created_at),
     }
 

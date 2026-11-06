@@ -19,7 +19,7 @@ from ..errors import ApiError
 from ..models import Account, BankTxn, Category, Expense, ExpensePayment
 from ..sms_parsers import display_name
 from ..timeutil import IST, ist_day_bounds, today_ist
-from . import activity, debts, planning
+from . import activity, debts, planning, reports
 from .expenses import expense_query
 
 
@@ -158,6 +158,11 @@ def budget(s: Session, user_id: int, args: dict) -> dict:
         "monthly_budget_rupees": _r(st["budget_paise"]) if st["budget_paise"] else None,
         "spent_this_month_rupees": _r(st["spent_month_paise"]),
         "daily_limit_rupees": _r(st["plan"]["daily_limit_paise"]) if st["plan"] else None,
+        "bigger_day_limit_rupees": _r(st["plan"]["big_day_limit_paise"]) if st["plan"] and st["plan"]["big_day_limit_paise"] else None,
+        "bigger_days_per_week": st["plan"]["big_days_per_week"] if st["plan"] else 0,
+        "bigger_days_left_this_week": st["big_days_left"],
+        "today_is_a_bigger_day": st["today_is_big_day"],
+        "limit_today_rupees": _r(st["today_limit_paise"]) if st["today_limit_paise"] is not None else None,
         "spent_today_rupees": _r(st["today_spent_paise"]),
         "left_today_rupees": _r(st["today_left_paise"]) if st["today_left_paise"] is not None else None,
         "saved_for_surprises_rupees": _r(st["buffer_paise"]),
@@ -222,6 +227,19 @@ def recent_activity(s: Session, user_id: int, args: dict) -> dict:
 def setup(s: Session, user_id: int, args: dict) -> dict:
     cats, accts = _names(s, user_id)
     return {"categories": sorted(cats.values()), "accounts": sorted(accts.values()), "today": today_ist().isoformat()}
+
+
+def month_report(s: Session, user_id: int, args: dict) -> dict:
+    return reports.for_model(reports.month_report(s, user_id, reports.parse_month(args.get("month"))))
+
+
+def money_in_and_out(s: Session, user_id: int, args: dict) -> dict:
+    today = today_ist()
+    start = _date(args.get("start_date"), reports.previous_month(reports.previous_month(today.replace(day=1))))
+    end = _date(args.get("end_date"), today)
+    if end < start:
+        start, end = end, start
+    return reports.for_model(reports.money_in_and_out(s, user_id, start, end))
 
 
 @dataclass(frozen=True)
@@ -295,6 +313,34 @@ TOOLS: list[Tool] = [
         "Everything that happened lately, newest first: spending, paybacks, money I owe, transfers, plans.",
         {"type": "object", "properties": {"limit": {"type": "integer"}}, "additionalProperties": False},
         recent_activity,
+    ),
+    Tool(
+        "month_report",
+        "The full picture of one month: total spent, by category with my usual (last 3 months) and the "
+        "month's pace, last month at the same point, every day, money in (income, paybacks), what's "
+        "left, accounts paid from, biggest spends, regular payments, money owed both ways, budget, and "
+        "bank payments from SMS not logged yet. Use it for 'where did my money go', a monthly report, "
+        "'is that more than usual' and 'anything I'm missing'.",
+        {
+            "type": "object",
+            "properties": {
+                "month": {"type": "string", "description": "YYYY-MM. Default: this month."},
+                "show": {
+                    "type": "boolean",
+                    "description": "True when I asked for a report, an overview or where my money went: the app "
+                    "then shows the full dashboard under your answer.",
+                },
+            },
+            "additionalProperties": False,
+        },
+        month_report,
+    ),
+    Tool(
+        "money_in_and_out",
+        "Income (bank credits I marked as income), spending and what's left, month by month, between two "
+        "dates. For 'am I spending more than I earn' and 'how much can I save'. Default: the last 3 months.",
+        {"type": "object", "properties": dict(_DATES), "additionalProperties": False},
+        money_in_and_out,
     ),
     Tool(
         "categories_and_accounts",

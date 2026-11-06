@@ -1,7 +1,7 @@
 // Plan: this month's budget, today's limit and what's left, what's been saved for surprises,
 // the bigger spends set aside, and the Sunday check-in. Talk to Finlyt to make or change it.
 import { router } from "expo-router";
-import { CalendarClock, Check, MessagesSquare, PiggyBank } from "lucide-react-native";
+import { BookmarkCheck, CalendarClock, ChartColumn, Check, MessagesSquare, PiggyBank } from "lucide-react-native";
 import { useEffect, useState } from "react";
 import { ActivityIndicator, ScrollView, View } from "react-native";
 import Animated, { FadeInDown } from "react-native-reanimated";
@@ -11,7 +11,7 @@ import { CategoryBadge } from "@/components/category-icon";
 import { formatClock, TimePickerSheet } from "@/components/time-picker";
 import { Button, Icon, Row, SectionLabel, Txt } from "@/components/ui";
 import { formatPaise } from "@/lib/money";
-import { DEFAULT_CHECK_IN, getCheckInTime, saveCheckInTime, type ReminderTime } from "@/lib/notifications";
+import { DEFAULT_CHECK_IN, getCheckIn, saveCheckIn, WEEKDAYS, type CheckIn, type ReminderTime } from "@/lib/notifications";
 import { useMeta, usePlan } from "@/lib/queries";
 import { useTheme } from "@/lib/theme";
 
@@ -35,18 +35,20 @@ export default function PlanOverview() {
   const { colors } = useTheme();
   const plan = usePlan();
   const meta = useMeta();
-  const [checkIn, setCheckIn] = useState<ReminderTime>(DEFAULT_CHECK_IN);
+  const [checkIn, setCheckIn] = useState<CheckIn>(DEFAULT_CHECK_IN);
   const [picking, setPicking] = useState(false);
   const [round, setRound] = useState(0);
 
   useEffect(() => {
-    void getCheckInTime().then(setCheckIn);
+    void getCheckIn().then(setCheckIn);
   }, []);
 
-  async function changeCheckIn(time: ReminderTime) {
+  async function changeCheckIn(time: ReminderTime, weekday: number) {
     setPicking(false);
-    setCheckIn(time);
-    await saveCheckInTime(time);
+    const next = { ...time, weekday };
+    setCheckIn(next);
+    await saveCheckIn(next);
+    void plan.refetch(); // the day decides when a check-in is due and where weeks start
   }
 
   const st = plan.data;
@@ -86,7 +88,7 @@ export default function PlanOverview() {
             <Txt tone="muted" className="mt-3 text-base leading-6">
               {plan.error
                 ? plan.error.message
-                : "Tell Finlyt your budget for the month and what's coming up. You'll get a daily limit, and a short check-in every Sunday."}
+                : `Tell Finlyt your budget for the month and what's coming up. You'll get limits that fit how you spend, and a short check-in every ${WEEKDAYS[checkIn.weekday]}.`}
             </Txt>
           </Animated.View>
         </View>
@@ -96,7 +98,8 @@ export default function PlanOverview() {
   }
 
   const budget = st.budget_paise ?? 0;
-  const limit = st.plan?.daily_limit_paise ?? 0;
+  const limit = st.today_limit_paise ?? st.plan?.daily_limit_paise ?? 0;
+  const bigDays = st.plan?.big_days_per_week ?? 0;
   const left = st.today_left_paise ?? 0;
   const buffer = st.buffer_paise;
 
@@ -142,6 +145,16 @@ export default function PlanOverview() {
             <View className="mt-3">
               <Bar ratio={st.today_spent_paise / Math.max(limit, 1)} danger={left < 0} />
             </View>
+            {st.plan && bigDays > 0 && st.plan.big_day_limit_paise ? (
+              <Txt tone="muted" className="mt-3 text-sm leading-5">
+                {st.today_is_big_day ? "A bigger day today. " : ""}
+                Usual days {formatPaise(st.plan.daily_limit_paise)}, up to {bigDays} bigger{" "}
+                {bigDays === 1 ? "day" : "days"} a week at {formatPaise(st.plan.big_day_limit_paise)}.{" "}
+                {st.big_days_left === 0
+                  ? "None left this week."
+                  : `${st.big_days_left} left this week.`}
+              </Txt>
+            ) : null}
             <View className="mt-4 flex-row items-center gap-2">
               <Icon icon={PiggyBank} size={18} tone={buffer >= 0 ? "accent" : "danger"} />
               <Txt tone="muted" className="flex-1 text-sm">
@@ -194,12 +207,24 @@ export default function PlanOverview() {
           <SectionLabel className="mb-1 mt-8">Check-in</SectionLabel>
           <View className="-mx-3">
             <Row
+              onPress={() => router.push("/report")}
+              leading={<Icon icon={ChartColumn} size={20} tone="muted" />}
+              title={`${month} report`}
+              subtitle="Where your money went, and how it compares"
+            />
+            <Row
+              onPress={() => router.push("/memory")}
+              leading={<Icon icon={BookmarkCheck} size={20} tone="muted" />}
+              title="What Finlyt remembers"
+              subtitle="Your income, monthly commitments and notes"
+            />
+            <Row
               onPress={() => {
                 setRound((r) => r + 1);
                 setPicking(true);
               }}
               leading={<Icon icon={CalendarClock} size={20} tone="muted" />}
-              title="Every Sunday"
+              title={`Every ${WEEKDAYS[checkIn.weekday]}`}
               subtitle={`${formatClock(checkIn)} · tap to change`}
             />
           </View>
@@ -215,8 +240,9 @@ export default function PlanOverview() {
         key={round}
         visible={picking}
         initial={checkIn}
+        initialWeekday={checkIn.weekday}
         onClose={() => setPicking(false)}
-        onDone={(time) => void changeCheckIn(time)}
+        onDone={(time, weekday) => void changeCheckIn(time, weekday)}
       />
     </View>
   );

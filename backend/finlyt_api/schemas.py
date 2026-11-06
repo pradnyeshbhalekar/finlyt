@@ -195,12 +195,30 @@ class PlannedItemIn(_In):
 
 
 class PlanIn(_In):
-    """A plan the user confirmed: this month's budget, the daily limit from today, planned items."""
+    """A plan the user confirmed: this month's budget, limits from today, planned items.
+
+    `daily_limit_paise` is the usual day; `big_day_limit_paise` and `big_days_per_week` are the
+    optional bigger days (leave them out, or 0, for one flat limit).
+    """
 
     monthly_budget_paise: int = Field(gt=0)
     daily_limit_paise: int = Field(gt=0)
+    big_day_limit_paise: int | None = Field(default=None, gt=0)
+    big_days_per_week: int = Field(default=0, ge=0, le=6)
     planned_items: list[PlannedItemIn] = Field(default_factory=list, max_length=40)
     notes: str | None = Field(default=None, max_length=500)
+
+    @model_validator(mode="after")
+    def _bigger_days(self) -> PlanIn:
+        if self.big_days_per_week and (self.big_day_limit_paise or 0) <= self.daily_limit_paise:
+            raise ValueError("A bigger day's limit has to be more than the usual day's")
+        return self
+
+
+class CheckInIn(_In):
+    """The weekly check-in day, Monday 0 to Sunday 6."""
+
+    weekday: int = Field(ge=0, le=6)
 
 
 class SmsIn(_In):
@@ -218,3 +236,82 @@ class SmsSyncIn(_In):
 
 class TxnResolveIn(_In):
     status: Literal["transfer", "ignored", "income", "pending"]
+
+
+# ── Import from an AI chat ───────────────────────────────────────────────────
+
+ImportSource = Literal["claude", "chatgpt", "gemini", "other"]
+
+
+class ImportPreviewIn(_In):
+    """The AI chat's reply, pasted in."""
+
+    text: str = Field(min_length=2, max_length=1_000_000)
+    source: ImportSource = "other"
+
+
+class ImportDueIn(_In):
+    person_name: str = Field(min_length=1, max_length=64)
+    amount_paise: int = Field(gt=0)
+
+
+class ImportEntryIn(_In):
+    """One entry from the preview, as the user kept it."""
+
+    kind: Literal["expense", "payback", "owe", "repay"]
+    occurred_at: datetime
+    description: str = Field(min_length=1, max_length=200)
+    category_id: int | None = None
+    amount_paise: int = Field(gt=0)
+    my_share_paise: int | None = Field(default=None, ge=0)
+    payments: list[PaymentIn] = Field(default_factory=list, max_length=6)
+    dues: list[ImportDueIn] = Field(default_factory=list, max_length=12)
+    person_name: str | None = Field(default=None, min_length=1, max_length=64)
+    note_raw: str | None = Field(default=None, max_length=4000)
+
+    @model_validator(mode="after")
+    def _complete(self) -> ImportEntryIn:
+        if self.kind == "expense" and not self.payments:
+            raise ValueError("an expense needs how it was paid")
+        if self.kind != "expense" and not self.person_name:
+            raise ValueError(f"a {self.kind} needs a person")
+        return self
+
+
+class ImportCommitIn(_In):
+    source: ImportSource = "other"
+    raw_text: str | None = Field(default=None, max_length=1_000_000)
+    entries: list[ImportEntryIn] = Field(min_length=1, max_length=3000)
+
+
+# ── What Finlyt remembers ────────────────────────────────────────────────────
+
+
+class IncomeIn(_In):
+    monthly_income_paise: int = Field(gt=0)
+    note: str | None = Field(default=None, max_length=200)
+
+
+class IncomeRuleIn(_In):
+    min_income_paise: int = Field(ge=0)
+    monthly_paise: int = Field(gt=0)
+
+
+class CommitmentIn(_In):
+    title: str = Field(min_length=1, max_length=120)
+    monthly_paise: int = Field(gt=0)
+    category_id: int | None = None
+    total_paise: int | None = Field(default=None, gt=0)
+    paid_before_paise: int | None = Field(default=None, ge=0)
+    rules: list[IncomeRuleIn] | None = Field(default=None, max_length=6)
+    match_words: list[str] | None = Field(default=None, max_length=8)
+    notes: str | None = Field(default=None, max_length=1000)
+
+
+class CommitmentPatch(_In):
+    title: str | None = Field(default=None, min_length=1, max_length=120)
+    monthly_paise: int | None = Field(default=None, gt=0)
+    total_paise: int | None = Field(default=None, ge=0)
+    paid_before_paise: int | None = Field(default=None, ge=0)
+    rules: list[IncomeRuleIn] | None = Field(default=None, max_length=6)
+    active: bool | None = None

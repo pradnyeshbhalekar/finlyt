@@ -1,10 +1,12 @@
-// Home's view of the plan: what's left of today's limit, and what's been saved for surprises.
-// Without a plan (or when a check-in is due) it invites you to talk to Finlyt.
+// Home's view of the plan: what's left of today's limit (the usual one, or a bigger day's once
+// you've gone past it), bigger days left this week, and what's been saved for surprises. Without
+// a plan (or when a check-in is due) it invites you to talk to Finlyt.
 import { router } from "expo-router";
 import { ChevronRight } from "lucide-react-native";
 import { Pressable, View } from "react-native";
 
 import { formatPaise } from "@/lib/money";
+import { todayWeekday, WEEKDAYS } from "@/lib/notifications";
 import type { PlanStatus } from "@/lib/types";
 
 import { Coin } from "./brand";
@@ -12,7 +14,7 @@ import { Icon, Txt } from "./ui";
 
 export function PlanStrip({ status }: { status: PlanStatus | undefined }) {
   if (!status) return null;
-  const sunday = new Date().getDay() === 0;
+  const checkInDay = todayWeekday() === status.check_in_weekday;
   const plan = status.plan;
 
   const invite =
@@ -24,9 +26,11 @@ export function PlanStrip({ status }: { status: PlanStatus | undefined }) {
       >
         <Coin size={36} variant="bare" />
         <View className="flex-1">
-          <Txt weight="semibold">{sunday ? "Sunday check-in" : plan ? "Time to check in" : "Plan your month"}</Txt>
+          <Txt weight="semibold">
+            {checkInDay ? `${WEEKDAYS[status.check_in_weekday]} check-in` : plan ? "Time to check in" : "Plan your month"}
+          </Txt>
           <Txt tone="muted" className="text-sm">
-            {plan ? "Talk through the week ahead with Finlyt" : "Set a budget and get a daily limit"}
+            {plan ? "Tell Finlyt what's coming up this week" : "Set a budget and get limits that fit you"}
           </Txt>
         </View>
         <Icon icon={ChevronRight} size={18} tone="muted" />
@@ -35,8 +39,9 @@ export function PlanStrip({ status }: { status: PlanStatus | undefined }) {
 
   if (!plan || status.today_left_paise === null) return invite;
 
-  const limit = plan.daily_limit_paise;
+  const limit = status.today_limit_paise ?? plan.daily_limit_paise;
   const left = status.today_left_paise;
+  const bigDays = plan.big_days_per_week > 0 && plan.big_day_limit_paise ? status.big_days_left : null;
   const used = Math.min(status.today_spent_paise / limit, 1);
   const buffer = status.buffer_paise;
 
@@ -55,8 +60,16 @@ export function PlanStrip({ status }: { status: PlanStatus | undefined }) {
           </Txt>
           <Txt tone="muted" className="text-sm">
             of {formatPaise(limit)}
+            {status.today_is_big_day ? " · bigger day" : ""}
           </Txt>
         </View>
+        {bigDays !== null ? (
+          <Txt tone="muted" className="mt-1 text-sm">
+            {bigDays === 0
+              ? "No bigger days left this week"
+              : `${bigDays} bigger ${bigDays === 1 ? "day" : "days"} left this week, up to ${formatPaise(plan.big_day_limit_paise ?? 0)}`}
+          </Txt>
+        ) : null}
         {buffer !== 0 ? (
           <Txt tone={buffer > 0 ? "accent" : "danger"} className="mt-1 text-sm">
             {buffer > 0

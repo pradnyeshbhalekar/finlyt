@@ -1,4 +1,4 @@
-"""Monthly budget, daily limit, buffer and the Sunday check-in (Gemini faked)."""
+"""Monthly budget, daily limit, buffer and the weekly check-in (Gemini faked)."""
 
 from __future__ import annotations
 
@@ -137,6 +137,9 @@ def turn(**overrides) -> GPlanTurn:
         "ready": True,
         "monthly_budget": 40000,
         "daily_limit": None,
+        "big_day_limit": None,
+        "big_days_per_week": None,
+        "options": [],
         "planned_items": [GPlannedItem(description="Rent", amount=15000, date="2026-11-25", category="rent")],
         "summary": "Rent on the 25th, rest daily",
     }

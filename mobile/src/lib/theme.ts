@@ -17,6 +17,8 @@ export type Palette = {
   faint: string;
   accent: string;
   accentSoft: string;
+  /** Chart marks (bars). Checked against each theme's background with the dataviz validator. */
+  chart: string;
   danger: string;
   warnBg: string;
   warnFg: string;
@@ -38,6 +40,7 @@ export const palettes: Record<ThemeName, Palette> = {
     faint: "#9A9DAD",
     accent: "#3355FF",
     accentSoft: "#E9EDFF",
+    chart: "#3355FF",
     danger: "#D92D20",
     warnBg: "#FFF4E0",
     warnFg: "#8A4B00",
@@ -51,6 +54,7 @@ export const palettes: Record<ThemeName, Palette> = {
     faint: "#6C6C72",
     accent: "#8197FF",
     accentSoft: "#141B3D",
+    chart: "#5C78FF",
     danger: "#FF6B5E",
     warnBg: "#2B1F0A",
     warnFg: "#F5C46B",
@@ -64,6 +68,7 @@ export const palettes: Record<ThemeName, Palette> = {
     faint: "#5C6499",
     accent: "#AEBBFF",
     accentSoft: "#1C2468",
+    chart: "#6A84FF",
     danger: "#FF7A6E",
     warnBg: "#2A2440",
     warnFg: "#F5C46B",

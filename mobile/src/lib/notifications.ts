@@ -5,9 +5,11 @@ import * as SecureStore from "expo-secure-store";
 import { useEffect } from "react";
 import { Platform } from "react-native";
 
+import { api } from "./api";
+
 export const REMINDER_CHANNEL = "reminders";
 const TIMES_KEY = "finlyt.reminderTimes";
-const CHECK_IN_KEY = "finlyt.sundayCheckIn";
+const CHECK_IN_KEY = "finlyt.sundayCheckIn"; // the name is from when it was always Sunday
 
 export type ReminderTime = { hour: number; minute: number };
 
@@ -57,22 +59,63 @@ export function parseTime(text: string): ReminderTime | null {
   return hour < 24 && minute < 60 ? { hour, minute } : null;
 }
 
-/** When the Sunday planning check-in reminder fires. Default 7 PM. */
-export const DEFAULT_CHECK_IN: ReminderTime = { hour: 19, minute: 0 };
+/** The weekly planning check-in: a day (Monday 0 to Sunday 6, as on the server) and a time. */
+export type CheckIn = ReminderTime & { weekday: number };
 
-export async function getCheckInTime(): Promise<ReminderTime> {
+export const WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+
+export const DEFAULT_CHECK_IN: CheckIn = { weekday: 6, hour: 19, minute: 0 };
+
+/** "Sunday at 7:00 PM". */
+export function describeCheckIn(c: CheckIn): string {
+  return `${WEEKDAYS[c.weekday]} at ${formatTime(c)}`;
+}
+
+/** Today's weekday in the server's numbering (Monday 0). */
+export function todayWeekday(now = new Date()): number {
+  return (now.getDay() + 6) % 7;
+}
+
+async function savedCheckIn(): Promise<CheckIn | null> {
   const saved = await SecureStore.getItemAsync(CHECK_IN_KEY);
-  if (!saved) return DEFAULT_CHECK_IN;
+  if (!saved) return null;
   try {
-    return JSON.parse(saved) as ReminderTime;
+    const parsed = JSON.parse(saved) as Partial<CheckIn>;
+    if (typeof parsed.hour !== "number" || typeof parsed.minute !== "number") return null;
+    // Saved before the day could be chosen: it was Sunday.
+    const weekday = typeof parsed.weekday === "number" && parsed.weekday >= 0 && parsed.weekday <= 6 ? parsed.weekday : 6;
+    return { weekday, hour: parsed.hour, minute: parsed.minute };
   } catch {
-    return DEFAULT_CHECK_IN;
+    return null;
   }
 }
 
-export async function saveCheckInTime(time: ReminderTime): Promise<number> {
-  await SecureStore.setItemAsync(CHECK_IN_KEY, JSON.stringify(time));
-  return scheduleReminders();
+export async function getCheckIn(): Promise<CheckIn> {
+  return (await savedCheckIn()) ?? DEFAULT_CHECK_IN;
+}
+
+/** Tell the server the check-in day (it starts the weeks for bigger days and says when one is due). */
+async function sendCheckInDay(weekday: number): Promise<boolean> {
+  try {
+    await api("/api/plan/check-in", { method: "PUT", body: { weekday } });
+    return true;
+  } catch (e) {
+    console.warn("[check-in] couldn't send the day", e);
+    return false;
+  }
+}
+
+/** Save the check-in on the phone, move its reminder, and tell the server the day. */
+export async function saveCheckIn(c: CheckIn): Promise<boolean> {
+  await SecureStore.setItemAsync(CHECK_IN_KEY, JSON.stringify(c));
+  await scheduleReminders();
+  return sendCheckInDay(c.weekday);
+}
+
+/** On launch: make sure the server has the day chosen on this phone (if one was ever chosen). */
+export async function syncCheckInDay(): Promise<void> {
+  const saved = await savedCheckIn();
+  if (saved) await sendCheckInDay(saved.weekday);
 }
 
 export async function getReminderTimes(): Promise<ReminderTime[]> {
@@ -115,17 +158,17 @@ export async function scheduleReminders(times?: ReminderTime[]): Promise<number>
       },
     });
   }
-  // Sunday check-in with Finlyt: plan the coming week.
-  const checkIn = await getCheckInTime();
+  // The weekly check-in with Finlyt, on the day you chose: plan the coming week.
+  const checkIn = await getCheckIn();
   await Notifications.scheduleNotificationAsync({
     content: {
-      title: "Sunday check-in",
-      body: "Five minutes with Finlyt to plan the week ahead.",
+      title: `${WEEKDAYS[checkIn.weekday]} check-in`,
+      body: "What's coming up this week? Five minutes with Finlyt to plan it.",
       data: { url: "/plan/chat" },
     },
     trigger: {
       type: Notifications.SchedulableTriggerInputTypes.WEEKLY,
-      weekday: 1, // Sunday
+      weekday: ((checkIn.weekday + 1) % 7) + 1, // Expo counts Sunday 1 to Saturday 7
       hour: checkIn.hour,
       minute: checkIn.minute,
       channelId: REMINDER_CHANNEL,

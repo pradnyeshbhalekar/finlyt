@@ -69,7 +69,9 @@ On Android, the free sign-in library uses Google's legacy Sign-In SDK. If Google
 | `dues` | Who owes me how much, for which expense |
 | `settlements` | Paybacks against dues, made by credit txn or cash. One credit can settle several dues |
 | `import_batches` | Each Claude-chat import, so it can be undone |
-| `ask_threads` · `ask_messages` | Ask Finlyt chats and their turns (with the model and data tools used). Deleted after `ASK_KEEP_DAYS` (10) without use |
+| `ask_threads` · `ask_messages` | Ask Finlyt chats and their turns (with the model, data tools used, and answers to tap when Finlyt asked back). Deleted after `ASK_KEEP_DAYS` (10) without use |
+| `money_profiles` · `commitments` · `money_notes` | What Finlyt remembers: monthly income; money promised every month (with income rules like ₹6,000 once salary is ₹55,000, and payoff progress); notes |
+| `plans` | From each check-in: the usual-day limit, and optionally a bigger-day limit for N days a week. `users.check_in_weekday` is the check-in day; weeks start on it |
 
 Invariants:
 
@@ -105,6 +107,9 @@ All routes are under `/api` and use JSON. Every route needs `Authorization: Bear
 | `GET /api/txns` · `POST /api/txns/:id/resolve` | 5 | List pending txns · mark one as transfer, ignore or income |
 | `GET /api/dues` · `POST /api/dues/settle` | 6 | What each person owes me · settle by cash or with a credit txn |
 | `POST /api/ask` | — | Ask Finlyt: `{text, thread_id?}` in, answer and `thread_id` out. The chat is saved; older apps can send `messages` instead (not saved) |
+| `GET /api/reports/month?month=` | — | The month report: by category vs usual, each day, money in and left, accounts, biggest, regular payments, owed, unlogged SMS |
+| `GET /api/memory` · `PUT/DELETE /api/memory/income` · `POST/PATCH/DELETE /api/memory/commitments` · `DELETE /api/memory/notes/:id` | — | What Finlyt remembers, to see and correct |
+| `PUT /api/plan/check-in` | 3b | The weekly check-in day (Monday 0 to Sunday 6). The time stays on the phone |
 | `GET /api/ask/threads` · `GET/DELETE /api/ask/threads/:id` | — | Past chats (newest first, with `keep_days`) · one chat's messages · delete it. Chats untouched for 10 days are deleted on any Ask call |
 
 ## Screens
@@ -122,7 +127,8 @@ Redesigned on 2026-11-05 to be minimal: Lucide icons, Inter, and no emojis anywh
 - **Check entries** (`log/review`): the full editor, with description, category chips with icons, payment legs, who owes what, and an on/off switch per entry.
 - **History**: entries grouped by day with day totals. Long-press to delete.
 - **Owed to you**: total plus a per-person breakdown, worked out from open dues.
-- **Ask Finlyt**: a chat about your money. Past chats sit behind the header's history icon (grouped by day, searchable, long-press to delete, kept 10 days), next to New chat. Long-press a message to copy it.
+- **Check-in** (weekly, on the day and time you pick in onboarding, Plan or Settings): Finlyt asks what's coming up, with answers to tap or your own words. The plan has a usual-day limit and optional bigger days, and you can change the numbers on the card, which shows whether it fits the budget.
+- **Ask Finlyt**: a chat about your money. If a question is unclear, Finlyt asks back with answers to tap. "Where did my money go?" comes with a report card (full report screen behind it) and follow-ups to tap. It remembers income, commitments and notes you tell it (the **What Finlyt remembers** screen shows them) and uses them for "am I saving enough?". Past chats sit behind the header's history icon (grouped by day, searchable, long-press to delete, kept 10 days), next to New chat. Long-press a message to copy it.
 - **Settings**: profile; Appearance (Auto / Light / Dark / Ink); Check before saving; Add an entry by hand; Check-in times and a test reminder; Sign out.
 - Later: pending SMS payments at the top of Home ("To log"); tapping one asks "What was Sharma Stores?". Import from Claude.
 
@@ -195,7 +201,7 @@ Parsing notes:
 
 **Privacy:** account numbers, balances and refs are never sent. On the free tier, Google may use prompts to improve its models. Enabling billing stops that, and should cost about $1 a month at this volume.
 
-## Claude chat import (phase 4)
+## Import from an AI chat (phase 4; built 2026-11-07, any AI chat, in onboarding and Settings)
 
 1. On the Import screen, tap **Copy prompt** and paste it into the old Claude chat.
 2. Paste Claude's reply back into the app.
@@ -344,8 +350,8 @@ finlyt/
 - [x] **1. Backend core**: models and migration ✅, Google sign-in and sessions ✅, per-user defaults ✅, meta, expenses and stats endpoints ✅, tests ✅, deployed to Vercel ✅ (https://finlyt-api.vercel.app)
 - [x] **2. App shell**: sign-in screen ✅, navigation ✅, NativeWind ✅, 12/6/11 reminders ✅, manual add ✅, history ✅, home totals ✅, brand icon/splash/notification icon/logo ✅ (typecheck, lint and Android bundle pass). Installed on the Pixel and sign-in works ✅
 - [x] **3. Gemini logging**: propose and commit endpoints ✅, paybacks ✅, 33 backend tests ✅, live Gemini check with text and an AAC voice note ✅, Log screen with recorder ✅, Review screen ✅, voice note → review → save works on the Pixel ✅
-- [x] **3b. Sunday check-in planning**: monthly budget, planned items, daily limit and buffer; chat with Finlyt; Home strip; Sunday reminder (deployed)
-- [ ] **4. Claude-chat import** (milestone 1: stop using the Claude chat)
+- [x] **3b. Weekly check-in planning**: monthly budget, planned items, daily limit and buffer; chat with Finlyt; Home strip; weekly reminder (deployed). 2026-11-07: usual + bigger days, check-in day of your choice, answers to tap, editable plan card (built, not deployed yet)
+- [x] **4. Import from an AI chat** (Claude, ChatGPT, Gemini): prompt, preview with duplicates and SMS links, batch save, undo; onboarding step and Settings (built 2026-11-07, deploy pending)
 - [ ] **5. SMS auto-fetch**: Kotlin module ✅, Kotak and DNS parsers with tests ✅, pending inbox ("To log") ✅, auto-linking ✅, transfers/ignore ✅. Still to do: deploy the backend, install the build, try it with real SMS (milestone 2)
 - [ ] **6. Owed to me**: payback matching, charts, release APK
 

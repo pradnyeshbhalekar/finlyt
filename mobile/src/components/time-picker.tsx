@@ -1,8 +1,9 @@
-// A small, all-JS time picker in a bottom sheet: hour, minutes in 5s, AM/PM.
+// A small, all-JS time picker in a bottom sheet: hour, minutes in 5s, AM/PM, and optionally the
+// day of the week (for the weekly check-in).
 import { useState } from "react";
 import { Pressable, ScrollView, View } from "react-native";
 
-import type { ReminderTime } from "@/lib/notifications";
+import { WEEKDAYS, type ReminderTime } from "@/lib/notifications";
 
 import { Button, Segmented, Sheet, Txt } from "./ui";
 
@@ -33,26 +34,39 @@ function Cell({ label, selected, onPress }: { label: string; selected: boolean; 
 export function TimePickerSheet({
   visible,
   initial,
+  initialWeekday,
   onClose,
   onDone,
 }: {
   visible: boolean;
   initial: ReminderTime;
+  /** Pass a weekday (Monday 0 to Sunday 6) to pick the day too. */
+  initialWeekday?: number;
   onClose: () => void;
-  onDone: (time: ReminderTime) => void;
+  onDone: (time: ReminderTime, weekday: number) => void;
 }) {
   // The parent remounts this with a new `key` per edit, so `initial` seeds the state once.
   const [hour12, setHour12] = useState(initial.hour % 12 === 0 ? 12 : initial.hour % 12);
   const [minute, setMinute] = useState(initial.minute - (initial.minute % 5));
   const [half, setHalf] = useState<"AM" | "PM">(initial.hour < 12 ? "AM" : "PM");
+  const [weekday, setWeekday] = useState(initialWeekday ?? 6);
+  const withDay = initialWeekday !== undefined;
   const hour = (hour12 % 12) + (half === "PM" ? 12 : 0);
 
   return (
     <Sheet visible={visible} onClose={onClose}>
       <Txt weight="bold" className="mb-4 text-center text-4xl">
+        {withDay ? `${WEEKDAYS[weekday].slice(0, 3)}, ` : ""}
         {formatClock({ hour, minute })}
       </Txt>
       <ScrollView bounces={false}>
+        {withDay ? (
+          <View className="mb-3 flex-row flex-wrap justify-center">
+            {WEEKDAYS.map((day, i) => (
+              <Cell key={day} label={day.slice(0, 3)} selected={i === weekday} onPress={() => setWeekday(i)} />
+            ))}
+          </View>
+        ) : null}
         <View className="flex-row flex-wrap justify-center">
           {HOURS.map((h) => (
             <Cell key={h} label={String(h)} selected={h === hour12} onPress={() => setHour12(h)} />
@@ -81,7 +95,7 @@ export function TimePickerSheet({
       </ScrollView>
       <View className="mt-5 flex-row gap-3">
         <Button label="Cancel" variant="secondary" onPress={onClose} className="flex-1" />
-        <Button label="Done" onPress={() => onDone({ hour, minute })} className="flex-1" />
+        <Button label="Done" onPress={() => onDone({ hour, minute }, weekday)} className="flex-1" />
       </View>
     </Sheet>
   );

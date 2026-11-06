@@ -1,9 +1,13 @@
 // First run after signing in, one thing at a time: what Finlyt does, check-in times, how to save
-// what you tell it, bank SMS, and a daily limit. Each step's pieces come in one after another.
+// what you tell it, bank SMS, importing from an AI chat, and the weekly planning check-in (day and
+// time). The coin sits at the top of every step, and each step's pieces come in one after another.
 import { router } from "expo-router";
 import {
   Bell,
+  CalendarClock,
   ChevronLeft,
+  ClipboardPaste,
+  Copy,
   CircleCheck,
   MessageSquareText,
   Mic,
@@ -16,16 +20,35 @@ import { Pressable, ScrollView, View } from "react-native";
 import Animated, { FadeInDown } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { Coin } from "@/components/brand";
+import { Coin, type Mood } from "@/components/brand";
 import { ReminderEditor } from "@/components/reminder-editor";
-import { Button, Icon, IconButton, Screen, Txt } from "@/components/ui";
+import { formatClock, TimePickerSheet } from "@/components/time-picker";
+import { Button, Icon, IconButton, Row, Screen, Txt } from "@/components/ui";
 import { useAuth } from "@/lib/auth";
-import { DEFAULT_REMINDERS, saveReminderTimes, type ReminderTime } from "@/lib/notifications";
+import {
+  DEFAULT_CHECK_IN,
+  DEFAULT_REMINDERS,
+  saveCheckIn,
+  saveReminderTimes,
+  WEEKDAYS,
+  type CheckIn,
+  type ReminderTime,
+} from "@/lib/notifications";
 import { usePrefs } from "@/lib/prefs";
 import { askSmsPermission, smsPermitted, smsSupported } from "@/lib/sms";
 import { BRAND } from "@/lib/theme";
 
-type Step = "welcome" | "checkins" | "saving" | "sms" | "plan";
+type Step = "welcome" | "checkins" | "saving" | "sms" | "import" | "plan";
+
+/** The coin at the top of each step, in a mood that suits it. */
+const MOODS: Record<Step, Mood> = {
+  welcome: "happy",
+  checkins: "default",
+  saving: "thinking",
+  sms: "default",
+  import: "happy",
+  plan: "default",
+};
 
 /** Wraps a piece of a step so it slides in after the ones before it. */
 function In({ i, children }: { i: number; children: ReactNode }) {
@@ -104,11 +127,21 @@ export default function Onboarding() {
   const insets = useSafeAreaInsets();
   const prefs = usePrefs();
   const { user } = useAuth();
-  const steps: Step[] = ["welcome", "checkins", "saving", ...(smsSupported() ? (["sms"] as Step[]) : []), "plan"];
+  const steps: Step[] = [
+    "welcome",
+    "checkins",
+    "saving",
+    ...(smsSupported() ? (["sms"] as Step[]) : []),
+    "import",
+    "plan",
+  ];
   const [index, setIndex] = useState(0);
   const [times, setTimes] = useState<ReminderTime[]>(DEFAULT_REMINDERS);
   const [review, setReview] = useState(prefs.reviewBeforeSave);
   const [busy, setBusy] = useState(false);
+  const [checkIn, setCheckIn] = useState<CheckIn>(DEFAULT_CHECK_IN);
+  const [pickingCheckIn, setPickingCheckIn] = useState(false);
+  const [pickRound, setPickRound] = useState(0);
   const step = steps[index];
   const firstName = user?.name?.split(" ")[0];
 
@@ -118,6 +151,7 @@ export default function Onboarding() {
     setBusy(true);
     try {
       await saveReminderTimes(times); // asks for notification permission
+      await saveCheckIn(checkIn); // its reminder, and the day for the server
     } finally {
       prefs.update({ reviewBeforeSave: review, onboarded: true }); // switches the app to Home
       if (thenPlan) setTimeout(() => router.push("/plan/chat"), 400);
@@ -134,11 +168,8 @@ export default function Onboarding() {
   if (step === "welcome") {
     body = (
       <>
-        <In i={0}>
-          <Coin size={64} variant="bare" mood="happy" />
-        </In>
         <In i={1}>
-          <Txt tone="muted" className="mt-8 text-base">
+          <Txt tone="muted" className="text-base">
             {firstName ? `Hi ${firstName}` : "Hi"}
           </Txt>
         </In>
@@ -165,13 +196,13 @@ export default function Onboarding() {
   } else if (step === "checkins") {
     body = (
       <>
-        <In i={0}>
+        <In i={1}>
           <Title>When should I check in?</Title>
         </In>
-        <In i={1}>
+        <In i={2}>
           <Lead>I&apos;ll remind you at these times. Tap one to change it.</Lead>
         </In>
-        <In i={2}>
+        <In i={3}>
           <View className="mt-6">
             <ReminderEditor times={times} onChange={setTimes} />
           </View>
@@ -182,14 +213,14 @@ export default function Onboarding() {
   } else if (step === "saving") {
     body = (
       <>
-        <In i={0}>
+        <In i={1}>
           <Title>When you tell me what you spent…</Title>
         </In>
-        <In i={1}>
+        <In i={2}>
           <Lead>You can change this any time in Settings.</Lead>
         </In>
         <View className="mt-6">
-          <In i={2}>
+          <In i={3}>
             <Choice
               icon={CircleCheck}
               title="Show me first"
@@ -198,7 +229,7 @@ export default function Onboarding() {
               onPress={() => setReview(true)}
             />
           </In>
-          <In i={3}>
+          <In i={4}>
             <Choice
               icon={Zap}
               title="Save straight away"
@@ -214,16 +245,16 @@ export default function Onboarding() {
   } else if (step === "sms") {
     body = (
       <>
-        <In i={0}>
+        <In i={1}>
           <Title>Pick up bank payments?</Title>
         </In>
-        <In i={1}>
+        <In i={2}>
           <Lead>
             I can read your Kotak and DNS Bank SMS and list each UPI payment for you to explain. Other messages
             never leave your phone.
           </Lead>
         </In>
-        <In i={2}>
+        <In i={3}>
           <View className="mt-8 rounded-3xl bg-surface px-4 py-3.5">
             <View className="flex-row items-center">
               <View className="flex-1">
@@ -241,7 +272,7 @@ export default function Onboarding() {
             </View>
           </View>
         </In>
-        <In i={3}>
+        <In i={4}>
           <View className="mt-3 self-start rounded-full border border-line px-4 py-2">
             <Txt tone="muted" className="text-sm">
               What was Zomato? “lunch with Rahul, he owes 200”
@@ -256,23 +287,81 @@ export default function Onboarding() {
         <Button label="Allow" onPress={() => void allowSms()} className="flex-1" />
       </View>
     );
-  } else {
+  } else if (step === "import") {
     body = (
       <>
-        <In i={0}>
-          <Coin size={56} variant="bare" />
-        </In>
         <In i={1}>
-          <View className="mt-8">
-            <Title>Want a daily limit?</Title>
-          </View>
+          <Title>Tracked spending with an AI?</Title>
         </In>
         <In i={2}>
           <Lead>
-            Tell Finlyt your budget for the month and what&apos;s coming up, like rent or a trip. You&apos;ll get
-            a daily limit, and whatever you don&apos;t spend is kept aside for surprises.
+            If you&apos;ve been telling Claude, ChatGPT or Gemini what you spent, Finlyt can bring it all in, splits
+            and paybacks included. Your weekly check-ins get better with it.
           </Lead>
         </In>
+        <View className="mt-6">
+          <In i={3}>
+            <Feature icon={Copy} title="Copy a prompt" text="Finlyt writes it with your categories and accounts." />
+          </In>
+          <In i={4}>
+            <Feature icon={MessageSquareText} title="Paste it into that chat" text="The same conversation where you tracked your spending." />
+          </In>
+          <In i={5}>
+            <Feature icon={ClipboardPaste} title="Paste the reply back" text="Check the list, untick anything, and import. One tap undoes it." />
+          </In>
+        </View>
+      </>
+    );
+    actions = (
+      <View className="flex-row gap-3">
+        <Button label="Not now" variant="secondary" onPress={next} className="flex-1" />
+        <Button
+          label="Import"
+          onPress={() => {
+            next(); // coming back from the import lands on the next step
+            router.push("/import");
+          }}
+          className="flex-1"
+        />
+      </View>
+    );
+  } else {
+    body = (
+      <>
+        <In i={1}>
+          <Title>Plan your week</Title>
+        </In>
+        <In i={2}>
+          <Lead>
+            Once a week Finlyt asks what&apos;s coming up, like a trip, a family dinner or a bill, and sets your
+            limits: one for usual days, and a few bigger days if your weeks have them. Whatever you don&apos;t
+            spend is kept aside for surprises.
+          </Lead>
+        </In>
+        <In i={3}>
+          <View className="-mx-3 mt-6">
+            <Row
+              onPress={() => {
+                setPickRound((r) => r + 1);
+                setPickingCheckIn(true);
+              }}
+              leading={<Icon icon={CalendarClock} size={20} tone="accent" />}
+              title={`Every ${WEEKDAYS[checkIn.weekday]}`}
+              subtitle={`${formatClock(checkIn)} · tap to change. You can change it later in Plan.`}
+            />
+          </View>
+        </In>
+        <TimePickerSheet
+          key={pickRound}
+          visible={pickingCheckIn}
+          initial={checkIn}
+          initialWeekday={checkIn.weekday}
+          onClose={() => setPickingCheckIn(false)}
+          onDone={(time, weekday) => {
+            setCheckIn({ ...time, weekday });
+            setPickingCheckIn(false);
+          }}
+        />
       </>
     );
     actions = (
@@ -304,6 +393,11 @@ export default function Onboarding() {
       </View>
       {/* A new key per step replays the entrance animations. */}
       <ScrollView key={step} className="flex-1" contentContainerClassName="px-6 pb-6 pt-6">
+        <In i={0}>
+          <View className="mb-7">
+            <Coin size={56} variant="bare" mood={MOODS[step]} />
+          </View>
+        </In>
         {body}
       </ScrollView>
       <Animated.View key={`${step}-actions`} entering={FadeInDown.delay(300).duration(400)}>

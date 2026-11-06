@@ -15,7 +15,7 @@ from typing import Callable, Protocol
 import httpx
 
 from flask import current_app
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from .config import Settings
 from .errors import ApiError
@@ -115,13 +115,53 @@ class GPlannedItem(BaseModel):
     category: str = Field(description="Exactly one of my category names")
 
 
+def _all_required(schema: dict) -> None:
+    """Ask the model for every field, while parsing stays lenient about the newer ones."""
+    schema["required"] = list(schema.get("properties", {}))
+
+
+class GIncomeRule(BaseModel):
+    when_income_at_least: float = Field(description="Rupees a month")
+    monthly: float = Field(description="Rupees a month from then on")
+
+
+class GCommitment(BaseModel):
+    """Money promised every month, e.g. ₹3,000 to my sister for a ₹24,000 laptop."""
+
+    title: str = Field(description="Short, e.g. 'Sister, for the laptop'")
+    monthly: float = Field(description="Rupees a month now")
+    category: str | None = Field(default=None, description="One of my category names")
+    total: float | None = Field(default=None, description="If it pays something off: the whole amount")
+    already_paid: float | None = Field(default=None, description="Paid before I told you")
+    rules: list[GIncomeRule] = Field(default_factory=list, description="How the amount changes with my income")
+    match_words: list[str] = Field(default_factory=list, description="Words that show up when I log paying it")
+    notes: str | None = None
+
+
 class GPlanTurn(BaseModel):
+    model_config = ConfigDict(json_schema_extra=_all_required)
+
     reply: str = Field(description="What Finlyt says next: one to three short sentences")
+    options: list[str] = Field(
+        default_factory=list,
+        description="If the reply asks me something: 2-4 short answers I could tap, most likely first. Else empty.",
+    )
     ready: bool = Field(description="True once a plan can be shown for me to confirm")
     monthly_budget: float | None = Field(description="This month's budget in rupees, if known")
-    daily_limit: float | None = Field(description="Suggested daily limit in rupees, if worked out")
+    daily_limit: float | None = Field(description="Usual-day limit in rupees, if worked out")
+    big_day_limit: float | None = Field(default=None, description="Bigger-day limit in rupees, or null for one flat limit")
+    big_days_per_week: int | None = Field(default=None, description="How many bigger days a week (0-6), or null")
     planned_items: list[GPlannedItem] = Field(description="Every planned item for this month")
     summary: str = Field(description="One line summing up the plan, for later")
+    remember_income: float | None = Field(
+        default=None, description="My monthly take-home income in rupees, only if my latest message says it"
+    )
+    remember_commitments: list[GCommitment] = Field(
+        default_factory=list, description="Monthly commitments my latest message tells you about or changes; else empty"
+    )
+    remember_notes: list[str] = Field(
+        default_factory=list, description="Other lasting facts about my money from my latest message; else empty"
+    )
 
 
 class Planner(Protocol):
@@ -287,6 +327,12 @@ class GroqJson:
         ]
         chat = [{"role": "system", "content": system}, *messages]
         used: list[str] = []
+        try:
+            return self._agent_rounds(chat, spec, call, used)
+        except FinishTurn as done:
+            return done.reply, f"groq/{self.model}", used
+
+    def _agent_rounds(self, chat: list[dict], spec: list[dict], call, used: list[str]) -> tuple[str, str, list[str]]:
         for _ in range(MAX_TOOL_ROUNDS):
             response = self._post({"model": self.model, "temperature": 0.2, "messages": chat, "tools": spec, "tool_choice": "auto"})
             self._check(response)
@@ -357,6 +403,72 @@ class FallbackPlanner:
         raise failure or ApiError(503, "not_configured", "No AI model is set up on the server")
 
 
+# ── Import from an AI chat: the reply's format, and repairing one that drifted ─
+
+
+class GImportPayment(BaseModel):
+    method: str = Field(default="unknown", description="An account name from the list, cash, upi, card or unknown")
+    amount: float = Field(description="Rupees")
+
+
+class GImportOwed(BaseModel):
+    person: str
+    amount: float = Field(description="Rupees")
+
+
+class GImportEntry(BaseModel):
+    """One item from the chat. Lenient on purpose: AIs drift, and the app shows what it made of it."""
+
+    date: str = Field(description='"YYYY-MM-DD"')
+    time: str | None = Field(default=None, description='"HH:MM" 24-hour, or null')
+    type: str = Field(default="expense", description="expense, payback, owe, repay, income or transfer")
+    description: str = ""
+    category: str = "Other"
+    amount: float = Field(description="Full amount in rupees")
+    my_share: float | None = None
+    payments: list[GImportPayment] = Field(default_factory=list)
+    owed_by: list[GImportOwed] = Field(default_factory=list)
+    person: str | None = Field(default=None, description="For payback, owe and repay: who")
+    notes: str | None = ""
+
+
+class GImport(BaseModel):
+    version: int = 1
+    entries: list[GImportEntry]
+
+
+class ImportFixer(Protocol):
+    def __call__(self, *, system: str, text: str) -> tuple[GImport, str]:
+        """Turns an AI chat's reply that didn't match the format into entries. Returns the model too."""
+        ...
+
+
+class GeminiImportFixer(_Gemini):
+    def __call__(self, *, system: str, text: str) -> tuple[GImport, str]:
+        from google.genai import types
+
+        return self._generate(system=system, contents=[types.Part.from_text(text=text)], schema=GImport)
+
+
+class FallbackImportFixer:
+    def __init__(self, gemini: ImportFixer | None, groq: GroqJson | None) -> None:
+        self.gemini = gemini
+        self.groq = groq
+
+    def __call__(self, *, system: str, text: str) -> tuple[GImport, str]:
+        failure: ApiError | None = None
+        if self.gemini is not None:
+            try:
+                return self.gemini(system=system, text=text)
+            except ApiError as e:
+                failure = e
+        if self.groq is not None:
+            if failure is not None:
+                log.warning("Gemini failed (%s); asking Groq to read the import", failure.code)
+            return self.groq.generate(system=system, messages=[{"role": "user", "content": text}], schema=GImport)
+        raise failure or ApiError(503, "not_configured", "No AI model is set up on the server")
+
+
 # ── Ask Finlyt: answering questions with the read-only data tools ───────────
 
 MAX_TOOL_ROUNDS = 6
@@ -369,6 +481,28 @@ class Agent(Protocol):
     ) -> tuple[str, str, list[str]]:
         """Returns the reply, the model that wrote it, and the tools it used."""
         ...
+
+
+def _final_text(response) -> str:
+    """The answer's text. Gemini sometimes sends the answer twice in two text parts (a draft and
+    the final), which `response.text` glues together, so take the last one."""
+    try:
+        parts = response.candidates[0].content.parts or []
+    except (AttributeError, IndexError, TypeError):
+        parts = []
+    texts = [p.text.strip() for p in parts if getattr(p, "text", None) and not getattr(p, "thought", False)]
+    texts = [t for t in texts if t]
+    if texts:
+        return texts[-1]
+    return (getattr(response, "text", None) or "").strip()
+
+
+class FinishTurn(Exception):
+    """Raised by a tool call to end the turn with this text as the reply (e.g. a question back)."""
+
+    def __init__(self, reply: str) -> None:
+        super().__init__(reply)
+        self.reply = reply
 
 
 def _safe_call(call: Callable[[str, dict], dict], name: str, args: dict) -> dict:
@@ -410,7 +544,7 @@ class GeminiAgent(_Gemini):
                     response = self._client.models.generate_content(model=model, contents=contents, config=config)
                     calls = response.function_calls or []
                     if not calls:
-                        return (response.text or "").strip() or GAVE_UP, model, used
+                        return _final_text(response) or GAVE_UP, model, used
                     contents.append(response.candidates[0].content)
                     parts = []
                     for c in calls:
@@ -419,6 +553,8 @@ class GeminiAgent(_Gemini):
                         parts.append(types.Part.from_function_response(name=c.name, response={"result": result}))
                     contents.append(types.Content(role="user", parts=parts))
                 return GAVE_UP, model, used
+            except FinishTurn as done:
+                return done.reply, model, used
             except errors.APIError as e:
                 log.warning("Gemini %s failed answering: %s %s", model, e.code, e.message)
                 last_code = e.code
@@ -474,6 +610,15 @@ def get_agent() -> Agent:
         gemini = GeminiAgent(settings) if settings.gemini_api_key else None
         extensions["finlyt.agent"] = FallbackAgent(gemini, groq)
     return extensions["finlyt.agent"]
+
+
+def get_import_fixer() -> ImportFixer:
+    extensions = current_app.extensions
+    if "finlyt.import_fixer" not in extensions:
+        settings, groq = _providers()
+        gemini = GeminiImportFixer(settings) if settings.gemini_api_key else None
+        extensions["finlyt.import_fixer"] = FallbackImportFixer(gemini, groq)
+    return extensions["finlyt.import_fixer"]
 
 
 def get_planner() -> Planner:

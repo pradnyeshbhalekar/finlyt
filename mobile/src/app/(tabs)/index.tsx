@@ -281,7 +281,7 @@ export default function Home() {
             </Txt>
           </View>
           <View className="mt-1 flex-row flex-wrap">
-            <Pressable onPress={() => router.push("/history")} hitSlop={6}>
+            <Pressable onPress={() => router.push("/report")} hitSlop={6} accessibilityHint="Opens this month's report">
               <Txt tone="muted" className="text-sm">
                 {formatPaise(month.data?.spend_paise ?? 0)}
                 {plan.data?.budget_paise ? ` of ${formatPaise(plan.data.budget_paise)}` : ""} this month

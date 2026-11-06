@@ -179,20 +179,42 @@ export type PlanStatus = {
   planned_total_paise: number;
   planned_left_paise: number;
   planned_items: PlannedItem[];
-  plan: { starts_on: string; daily_limit_paise: number; notes: string | null } | null;
+  plan: {
+    starts_on: string;
+    /** The usual day's limit. */
+    daily_limit_paise: number;
+    /** A few bigger days a week get this limit (null for one flat limit). */
+    big_day_limit_paise: number | null;
+    big_days_per_week: number;
+    weekly_paise: number;
+    notes: string | null;
+  } | null;
   today_spent_paise: number;
+  /** The usual limit, or the bigger one once today has gone past it and the week has one left. */
+  today_limit_paise: number | null;
+  today_is_big_day: boolean;
+  /** Bigger days still left this week (null without bigger days). */
+  big_days_left: number | null;
   /** Negative when over today's limit. Null without a plan. */
   today_left_paise: number | null;
   /** Kept aside from days under the limit, for unplanned things. */
   buffer_paise: number;
+  available_paise: number | null;
   suggested_daily_limit_paise: number | null;
+  /** The weekly check-in day, Monday 0 to Sunday 6. */
+  check_in_weekday: number;
   check_in_due: boolean;
 };
 
 export type ProposedPlan = {
   monthly_budget_paise: number;
   daily_limit_paise: number;
+  big_day_limit_paise: number | null;
+  big_days_per_week: number;
   suggested_daily_limit_paise: number;
+  /** What the budget leaves for everyday spending, and over how many days, to check the fit. */
+  available_paise: number;
+  days_left: number;
   planned_items: PlannedItem[];
   notes: string | null;
   issues: string[];
@@ -200,7 +222,14 @@ export type ProposedPlan = {
 
 export type ChatMessage = { role: "user" | "finlyt"; text: string };
 
-export type PlanTurn = { reply: string; plan: ProposedPlan | null; model: string };
+/** `options`: answers to tap when Finlyt asked a question (you can always type your own). */
+export type PlanTurn = {
+  reply: string;
+  options: string[];
+  plan: ProposedPlan | null;
+  memory_updates?: MemoryUpdate[];
+  model: string;
+};
 
 // ── Phase 5: bank SMS ────────────────────────────────────────────────────────
 
@@ -276,13 +305,177 @@ export type ActivityPage = { items: ActivityItem[]; next_before: string | null }
 
 // ── Ask Finlyt ───────────────────────────────────────────────────────────────
 
-export type AskTurn = { thread_id: number; title: string; reply: string; model: string; tools_used: string[] };
+export type AskTurn = {
+  thread_id: number;
+  title: string;
+  reply: string;
+  /** Answers to tap when Finlyt asked a question back. */
+  options: string[];
+  /** A month report to show under the answer, with follow-up questions to tap. */
+  report?: MonthReport | null;
+  followups?: string[];
+  /** What Finlyt remembered from this message. */
+  memory_updates?: MemoryUpdate[];
+  model: string;
+  tools_used: string[];
+};
 
 /** A message in a saved chat. `tools_used` is what Finlyt looked at to answer. */
-export type AskMessage = { id: number; role: "user" | "finlyt"; text: string; tools_used: string[]; created_at: string };
+export type AskMessage = {
+  id: number;
+  role: "user" | "finlyt";
+  text: string;
+  tools_used: string[];
+  options: string[];
+  report?: MonthReport | null;
+  followups?: string[];
+  memory_updates?: MemoryUpdate[];
+  created_at: string;
+};
 
 export type AskThreadSummary = { id: number; title: string; updated_at: string; preview: string };
 
 export type AskThreadList = { items: AskThreadSummary[]; keep_days: number };
 
 export type AskThread = { id: number; title: string; created_at: string; updated_at: string; messages: AskMessage[] };
+
+// ── Import from an AI chat ───────────────────────────────────────────────────
+
+export type ImportSource = "claude" | "chatgpt" | "gemini" | "other";
+
+export type ImportEntry = {
+  index: number;
+  /** "skip" for income, transfers and entries that can't be saved (see skip_reason). */
+  kind: "expense" | "payback" | "owe" | "repay" | "skip";
+  skip_reason: string | null;
+  occurred_at: string | null;
+  day: string | null;
+  description: string;
+  category_id: number | null;
+  amount_paise: number;
+  my_share_paise: number | null;
+  payments: { account_id: number; amount_paise: number; bank_txn_id: number | null }[];
+  dues: { person_name: string; amount_paise: number }[];
+  person_name: string | null;
+  note_raw: string | null;
+  warnings: string[];
+  /** An expense on the same day for the same amount is already logged. */
+  duplicate: boolean;
+  include: boolean;
+};
+
+export type ImportPreview = {
+  source: ImportSource;
+  /** The reply wasn't in the format, so the AI tidied it up. */
+  repaired: boolean;
+  entries: ImportEntry[];
+  summary: {
+    found: number;
+    importable: number;
+    duplicates: number;
+    skipped: number;
+    first_day: string | null;
+    last_day: string | null;
+    spent_paise: number;
+  };
+};
+
+export type ImportResult = {
+  batch_id: number;
+  imported: number;
+  saved: { expense: number; payback: number; owe: number; repay: number };
+  skipped: { index: number; description: string; reason: string }[];
+};
+
+export type ImportBatch = {
+  id: number;
+  source: ImportSource;
+  source_name: string;
+  entry_count: number;
+  created_at: string;
+  first_day: string | null;
+  last_day: string | null;
+};
+
+// ── Month reports and what Finlyt remembers ──────────────────────────────────
+
+export type MonthReport = {
+  month: string; // YYYY-MM
+  label: string; // "November 2026"
+  first_day: string;
+  last_day: string;
+  current: boolean;
+  days_counted: number;
+  days_in_month: number;
+  spent_paise: number;
+  entries: number;
+  per_day_paise: number;
+  /** The month at today's rate (the same as spent for a past month). */
+  pace_paise: number;
+  last_month: { label: string; total_paise: number; same_point_paise: number };
+  usual: { total_paise: number; months: number };
+  categories: {
+    category_id: number | null;
+    name: string;
+    spent_paise: number;
+    entries: number;
+    share: number;
+    usual_paise: number | null;
+    pace_paise: number;
+  }[];
+  by_day: { day: string; spent_paise: number }[];
+  paid_from: { account_id: number; name: string; paid_paise: number }[];
+  money_in: {
+    income_paise: number;
+    income_count: number;
+    paybacks_paise: number;
+    unexplained_credits: { count: number; paise: number };
+    /** The monthly income Finlyt remembers (used when no bank credit is marked as income). */
+    salary_paise: number | null;
+    income_source: "bank" | "memory" | null;
+    commitments_paise: number;
+    /** Income left after spending, on pace for the current month. */
+    left_paise: number | null;
+    saved_share: number | null;
+  };
+  biggest: { expense_id: number; description: string; day: string; category: string; my_share_paise: number }[];
+  regular: { description: string; category: string; typical_paise: number; months: number; last_day: string }[];
+  owed: { to_me_paise: number; i_owe_paise: number };
+  budget: {
+    budget_paise: number | null;
+    plan: PlanStatus["plan"];
+    days_over_limit: number | null;
+  };
+  unlogged: { count: number; paise: number };
+  notes: string[];
+};
+
+export type MemoryUpdate = { kind: "income" | "commitment" | "note"; text: string };
+
+export type Commitment = {
+  id: number;
+  title: string;
+  monthly_paise: number;
+  category_id: number | null;
+  category: string | null;
+  total_paise: number | null;
+  paid_paise: number;
+  left_paise: number | null;
+  months_left: number | null;
+  done: boolean;
+  rules: { min_income_paise: number; monthly_paise: number }[];
+  match_words: string[];
+  starts_on: string;
+  active: boolean;
+  notes: string | null;
+};
+
+export type MoneyMemory = {
+  monthly_income_paise: number | null;
+  income_note: string | null;
+  committed_paise: number;
+  after_commitments_paise: number | null;
+  commitments: Commitment[];
+  notes: { id: number; text: string; created_at: string }[];
+  updates?: MemoryUpdate[];
+};

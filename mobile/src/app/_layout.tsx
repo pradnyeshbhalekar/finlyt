@@ -18,7 +18,7 @@ import { useColorScheme, View, type GestureResponderEvent } from "react-native";
 import { Splash } from "@/components/splash";
 import { AuthProvider, useAuth } from "@/lib/auth";
 import { taps } from "@/lib/motion";
-import { scheduleReminders, useNotificationRedirect } from "@/lib/notifications";
+import { scheduleReminders, syncCheckInDay, useNotificationRedirect } from "@/lib/notifications";
 import { PrefsProvider, usePrefs } from "@/lib/prefs";
 import { fonts, resolveTheme, ThemeContext, themeVars, useTheme } from "@/lib/theme";
 import { scheduleWidgetRefresh } from "@/widgets/refresh";
@@ -116,7 +116,10 @@ function RootNavigator({ fontsLoaded }: { fontsLoaded: boolean }) {
 
   // Re-schedule on every launch so reminders survive app updates, reboots and clock changes.
   useEffect(() => {
-    if (signedIn && prefs.onboarded) void scheduleReminders();
+    if (signedIn && prefs.onboarded) {
+      void scheduleReminders();
+      void syncCheckInDay();
+    }
   }, [signedIn, prefs.onboarded]);
 
   useNotificationRedirect(signedIn && prefs.onboarded);
@@ -137,6 +140,8 @@ function RootNavigator({ fontsLoaded }: { fontsLoaded: boolean }) {
       <Stack.Protected guard={signedIn && prefs.onboarded}>
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="owed" options={{ ...header, title: "Owed" }} />
+        <Stack.Screen name="report" options={{ ...header, title: "Month report" }} />
+        <Stack.Screen name="memory" options={{ ...header, title: "What Finlyt remembers" }} />
         <Stack.Screen name="settings" options={{ ...header, title: "Settings" }} />
         <Stack.Screen
           name="expense/[id]"
@@ -157,6 +162,11 @@ function RootNavigator({ fontsLoaded }: { fontsLoaded: boolean }) {
       </Stack.Protected>
       <Stack.Protected guard={signedIn && !prefs.onboarded}>
         <Stack.Screen name="onboarding" />
+      </Stack.Protected>
+      {/* Reachable from onboarding and from Settings, so only signing in guards it. It comes after
+          onboarding so a new user still starts there. */}
+      <Stack.Protected guard={signedIn}>
+        <Stack.Screen name="import" options={{ ...header, title: "Import from AI" }} />
       </Stack.Protected>
       <Stack.Protected guard={!signedIn}>
         <Stack.Screen name="sign-in" />

@@ -11,14 +11,26 @@ import Animated, { FadeInDown } from "react-native-reanimated";
 
 import { AskHistory } from "@/components/ask-history";
 import { Coin } from "@/components/brand";
+import { Choices } from "@/components/choices";
+import { MemoryUpdates } from "@/components/memory-updates";
+import { ReportCard } from "@/components/month-report";
 import { KeyboardAware } from "@/components/keyboard";
 import { useTabBarHeight } from "@/components/tab-bar";
 import { IconButton, Txt } from "@/components/ui";
 import { fetchAskThread, useAsk, useMeta } from "@/lib/queries";
 import { useDictation } from "@/lib/speech";
 import { BRAND, fonts, useTheme, WHITE } from "@/lib/theme";
+import type { MemoryUpdate, MonthReport } from "@/lib/types";
 
-type Message = { role: "user" | "finlyt"; text: string; tools_used?: string[] };
+type Message = {
+  role: "user" | "finlyt";
+  text: string;
+  tools_used?: string[];
+  options?: string[];
+  report?: MonthReport | null;
+  followups?: string[];
+  memory_updates?: MemoryUpdate[];
+};
 
 // What each data tool reads, for the "Looked at" line under an answer.
 const LOOKED_AT: Record<string, string> = {
@@ -29,6 +41,8 @@ const LOOKED_AT: Record<string, string> = {
   bank_payments: "bank payments",
   recent_activity: "activity",
   categories_and_accounts: "categories",
+  month_report: "the month",
+  money_in_and_out: "money in and out",
 };
 
 function lookedAt(tools: string[] | undefined): string | null {
@@ -64,6 +78,7 @@ export default function Ask() {
   const [input, setInput] = useState("");
   const [error, setError] = useState<string | null>(null);
   const scroll = useRef<ComponentRef<typeof ScrollView>>(null);
+  const inputRef = useRef<ComponentRef<typeof TextInput>>(null);
   const handledQ = useRef<string | null>(null);
   const dictation = useDictation(setInput, setError);
   const hints = [
@@ -90,7 +105,18 @@ export default function Ask() {
     try {
       const turn = await ask.mutateAsync({ text: question, threadId: thread });
       setThreadId(turn.thread_id ?? null);
-      setMessages([...next, { role: "finlyt", text: turn.reply, tools_used: turn.tools_used }]);
+      setMessages([
+        ...next,
+        {
+          role: "finlyt",
+          text: turn.reply,
+          tools_used: turn.tools_used,
+          options: turn.options ?? [],
+          report: turn.report ?? null,
+          followups: turn.followups ?? [],
+          memory_updates: turn.memory_updates ?? [],
+        },
+      ]);
     } catch (e) {
       setError((e as Error).message);
     }
@@ -110,7 +136,17 @@ export default function Ask() {
     setError(null);
     try {
       const thread = await fetchAskThread(id);
-      setMessages(thread.messages.map((m) => ({ role: m.role, text: m.text, tools_used: m.tools_used })));
+      setMessages(
+        thread.messages.map((m) => ({
+          role: m.role,
+          text: m.text,
+          tools_used: m.tools_used,
+          options: m.options ?? [],
+          report: m.report ?? null,
+          followups: m.followups ?? [],
+          memory_updates: m.memory_updates ?? [],
+        })),
+      );
       setThreadId(thread.id);
     } catch (e) {
       setError((e as Error).message);
@@ -242,13 +278,42 @@ export default function Ask() {
                 </Pressable>
               </View>
               {looked ? (
-                <Txt tone="faint" className="ml-9 mt-1 text-xs">
+                <Txt tone="faint" className="mb-1 ml-9 mt-1 text-xs">
                   {looked}
                 </Txt>
               ) : null}
+              <View className="mt-2">
+                <MemoryUpdates updates={m.memory_updates} />
+                {m.report ? <ReportCard report={m.report} /> : null}
+              </View>
             </View>
           );
         })}
+        {/* After a report: follow-up questions to tap. */}
+        {!busy && messages.at(-1)?.role === "finlyt" && !messages.at(-1)?.options?.length
+          ? (messages.at(-1)?.followups ?? []).length > 0 && (
+              <View className="mb-3 ml-9 flex-row flex-wrap gap-2">
+                {(messages.at(-1)?.followups ?? []).map((q) => (
+                  <Pressable
+                    key={q}
+                    onPress={() => void send(q)}
+                    accessibilityRole="button"
+                    className="rounded-full border border-line px-4 py-2 active:bg-surface"
+                  >
+                    <Txt className="text-sm">{q}</Txt>
+                  </Pressable>
+                ))}
+              </View>
+            )
+          : null}
+        {/* Finlyt asked a question back: answers to tap, or type your own. */}
+        {!busy && messages.at(-1)?.role === "finlyt" ? (
+          <Choices
+            options={messages.at(-1)?.options ?? []}
+            onPick={(answer) => void send(answer)}
+            onOther={() => inputRef.current?.focus()}
+          />
+        ) : null}
         {ask.isPending ? (
           <View className="mb-3 flex-row items-end gap-2">
             <Coin size={28} variant="bare" mood="thinking" />
@@ -267,6 +332,7 @@ export default function Ask() {
       <KeyboardAware rest={10} offset={tabBarHeight}>
         <View className="mx-4 mt-2 flex-row items-end rounded-[28px] bg-surface p-1.5">
           <TextInput
+            ref={inputRef}
             value={input}
             onChangeText={setInput}
             placeholder={dictation.listening ? "Listening…" : "Ask anything about your money"}
