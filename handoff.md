@@ -148,7 +148,7 @@ The user wants to stay free. Gemini stays primary; **Groq is the fallback** (`fi
 - **Not yet active:** the user hasn't made a Groq key. When they do: put it in the root `.env` → copy to `backend/.env` → `printf %s "$KEY" | npx vercel@65.11.0 env add GROQ_API_KEY production --force --sensitive` → deploy (ask first). Then run the casual-input smoke test against Groq alone to check its Hinglish accuracy.
 - Free-tier notes (Nov 2026; Google no longer publishes numbers, so check AI Studio): Flash-Lite about 500 requests/day; Flash varies. Groq `gpt-oss-120b` about 1,000 requests/day and 200k tokens/day (about 80 Finlyt calls).
 
-## Ask Finlyt chat history (kept 10 days) + profile menu (2026-11-06) — BACKEND DEPLOYED
+## Ask Finlyt chat history (kept 10 days) + profile menu (2026-11-06) — DEPLOYED, INSTALLED, PUSHED (`abbf71b`)
 
 The user asked for Ask chats to be saved for at least 10 days, with a Claude-like interface, and then for Home's three header icons (Ask, Plan, Settings) to move somewhere else. They picked the **profile menu** from four options (bottom bar, side drawer like Claude, spread out in context).
 
@@ -161,7 +161,7 @@ The user asked for Ask chats to be saved for at least 10 days, with a Claude-lik
 - Live check on a local database with real Gemini: "Kal kitna kharcha hua?" then "aur is hafte?" in the same chat. The second answer used the context (this week's spending). Production `/api/ask/threads` returns 401 without a token (not 404).
 - Gotcha: a model column named `text` hides SQLAlchemy's `text()` in the class body, so `tools_used` uses `server_default="{}"`.
 
-**App (typecheck, lint and `expo export` pass; not yet seen on the phone)**
+**App (typecheck, lint and `expo export` pass; release APK installed on the Pixel 10a over wireless debugging on 2026-11-06 22:15, at `192.168.0.105`; not yet checked by the user)**
 - `app/ask.tsx`: keeps `threadId`. Header right has New chat (SquarePen, only once there are messages) and Past chats (`History`). Both are disabled while an answer is on its way, so it can't land in the wrong chat. Questions from Home (`?q=`) start a new chat.
 - `components/ask-history.tsx`: a `Sheet` with New chat and a search box (filters title and preview) at the top. Chats are grouped Today / Yesterday / Previous 7 days / Older, with a time or date. Long-press asks to delete (no swipe). Footer: "Chats are kept for 10 days. Long-press one to delete it." (`keep_days` from the server.)
 - Long-press a message to copy it. A toast shows only below Android 13, which shows its own. Answers show "Looked at: spending, people" from `tools_used` (labels in `LOOKED_AT`).
