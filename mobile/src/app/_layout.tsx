@@ -145,6 +145,7 @@ function RootNavigator({ fontsLoaded }: { fontsLoaded: boolean }) {
         <Stack.Screen name="report" options={{ ...header, title: "Month report" }} />
         <Stack.Screen name="memory" options={{ ...header, title: "What Finlyt remembers" }} />
         <Stack.Screen name="duplicates" options={{ ...header, title: "Possible duplicates" }} />
+        <Stack.Screen name="category" options={{ ...header, title: "Category" }} />
         <Stack.Screen name="settings" options={{ ...header, title: "Settings" }} />
         <Stack.Screen
           name="expense/[id]"

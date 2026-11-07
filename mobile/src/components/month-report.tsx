@@ -4,12 +4,13 @@
 // accounts, biggest spends, regular payments, money owed, and what's worth a look.
 import { router } from "expo-router";
 import { ArrowDownRight, ArrowUpRight, ChevronRight, Lightbulb, Repeat } from "lucide-react-native";
+import { useState } from "react";
 import { Pressable, View } from "react-native";
 
 import { formatPaise } from "@/lib/money";
 import type { MonthReport } from "@/lib/types";
 
-import { DailyBars, Meter, RankedBars } from "./charts";
+import { DailyBars, RankedBars, Ring } from "./charts";
 import { Icon, SectionLabel, Txt } from "./ui";
 
 function shortDay(iso: string): string {
@@ -38,22 +39,32 @@ function Comparison({ r }: { r: MonthReport }) {
   );
 }
 
-function categoryRows(r: MonthReport, limit?: number) {
+function openCategory(r: MonthReport, id: number | null, name: string) {
+  if (id == null) return undefined;
+  return () => router.push({ pathname: "/category", params: { month: r.month, category_id: String(id), name } });
+}
+
+function categoryRows(r: MonthReport, limit?: number, onMore?: () => void) {
   const rows = r.categories.map((c) => ({
     key: String(c.category_id ?? c.name),
     label: `${c.name} · ${Math.round(c.share * 100)}%`,
     paise: c.spent_paise,
     usualPaise: c.usual_paise,
-    detail:
-      c.usual_paise && r.current && c.pace_paise > c.usual_paise * 1.15
-        ? `On pace for ${formatPaise(c.pace_paise)}, usually ${formatPaise(c.usual_paise)}`
-        : undefined,
+    detail: undefined as string | undefined,
+    onPress: openCategory(r, c.category_id, c.name),
   }));
   if (!limit || rows.length <= limit) return rows;
   const rest = rows.slice(limit - 1);
   return [
     ...rows.slice(0, limit - 1),
-    { key: "other", label: `${rest.length} more`, paise: rest.reduce((sum, x) => sum + x.paise, 0), usualPaise: null, detail: undefined },
+    {
+      key: "other",
+      label: `${rest.length} more`,
+      paise: rest.reduce((sum, x) => sum + x.paise, 0),
+      usualPaise: null,
+      detail: undefined,
+      onPress: onMore,
+    },
   ];
 }
 
@@ -124,35 +135,44 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 
 /** The full report. */
 export function ReportView({ report: r }: { report: MonthReport }) {
+  const [allCategories, setAllCategories] = useState(false);
   const income = r.money_in.income_source === "bank" ? r.money_in.income_paise : r.money_in.salary_paise;
   const left = r.money_in.left_paise;
   const saved = r.money_in.saved_share;
   const limit = r.budget.plan?.daily_limit_paise ?? null;
+  const budget = r.budget.budget_paise;
+  const over = budget ? r.spent_paise - budget : 0;
+  const days = r.current ? `${r.days_counted} of ${r.days_in_month} days` : `${r.days_in_month} days`;
   return (
     <View>
-      <Txt tone="muted" className="text-sm">
-        {r.current ? `So far, ${r.days_counted} of ${r.days_in_month} days` : `${r.days_in_month} days`}
-      </Txt>
-      <Txt weight="bold" className="mt-1 text-5xl" style={{ letterSpacing: -1 }}>
-        {formatPaise(r.spent_paise)}
-      </Txt>
-      <Comparison r={r} />
-      <Txt tone="muted" className="mt-1 text-sm">
-        {formatPaise(r.per_day_paise)} a day
-        {r.current ? ` · on pace for ${formatPaise(r.pace_paise)}` : ""}
-        {r.usual.months ? ` · usually ${formatPaise(r.usual.total_paise)} a month` : ""}
-      </Txt>
-      {r.budget.budget_paise ? (
-        <View className="mt-4">
-          <Meter ratio={r.spent_paise / r.budget.budget_paise} />
-          <Txt tone="muted" className="mt-1.5 text-xs">
-            {formatPaise(r.spent_paise)} of your {formatPaise(r.budget.budget_paise)} budget
-            {r.budget.days_over_limit
-              ? ` · over the day's limit on ${r.budget.days_over_limit} ${r.budget.days_over_limit === 1 ? "day" : "days"}`
-              : ""}
+      <View className="items-center">
+        {budget ? (
+          <Ring ratio={r.spent_paise / budget} over={over > 0}>
+            <Txt tone="muted" className="text-xs">
+              {r.current ? "Spent so far" : "Spent"}
+            </Txt>
+            <Txt weight="bold" className="mt-0.5 text-3xl" style={{ letterSpacing: -0.6 }}>
+              {formatPaise(r.spent_paise)}
+            </Txt>
+            <Txt tone={over > 0 ? "danger" : "muted"} className="mt-0.5 text-xs">
+              {over > 0 ? `${formatPaise(over)} over budget` : `of ${formatPaise(budget)}`}
+            </Txt>
+          </Ring>
+        ) : (
+          <Txt weight="bold" className="text-5xl" style={{ letterSpacing: -1 }}>
+            {formatPaise(r.spent_paise)}
           </Txt>
-        </View>
-      ) : null}
+        )}
+        <Txt tone="muted" className="mt-3 text-sm">
+          {days}
+        </Txt>
+        <Comparison r={r} />
+      </View>
+      <View className="mt-6 flex-row gap-2">
+        <Tile label="A day" value={formatPaise(r.per_day_paise)} />
+        {r.current ? <Tile label="On pace for" value={formatPaise(r.pace_paise)} /> : null}
+        {r.usual.months ? <Tile label="Usually" value={formatPaise(r.usual.total_paise)} hint="a month" /> : null}
+      </View>
 
       <Section title="Money in and out">
         <View className="flex-row gap-2">
@@ -173,9 +193,8 @@ export function ReportView({ report: r }: { report: MonthReport }) {
           )}
         </View>
         {r.current && r.one_off_paise > 0 ? (
-          <Txt tone="muted" className="mt-2 text-xs leading-4">
-            On pace counts rent, bills and big buys ({formatPaise(r.one_off_paise)}) once, and projects your everyday
-            spending ({formatPaise(r.everyday_paise)} so far) over the rest of the month.
+          <Txt tone="muted" className="mt-2 text-xs">
+            On pace counts rent, bills and big buys once.
           </Txt>
         ) : null}
         {r.money_in.commitments_paise ? (
@@ -196,7 +215,10 @@ export function ReportView({ report: r }: { report: MonthReport }) {
 
       {r.categories.length > 0 ? (
         <Section title="Where it went">
-          <RankedBars rows={categoryRows(r, 8)} />
+          <RankedBars rows={categoryRows(r, allCategories ? undefined : 6, () => setAllCategories(true))} />
+          <Txt tone="faint" className="mt-3 text-xs">
+            Tap a category to see what&apos;s in it.
+          </Txt>
         </Section>
       ) : null}
 

@@ -151,9 +151,6 @@ export default function History() {
       }}
       ListHeaderComponent={
         <View className="px-3 pb-1">
-          <Txt tone="muted" className="text-sm">
-            Everything, newest first. Tap an entry to open it; long-press to delete.
-          </Txt>
           {dupeCount > 0 ? (
             <Pressable
               onPress={() => router.push("/duplicates")}

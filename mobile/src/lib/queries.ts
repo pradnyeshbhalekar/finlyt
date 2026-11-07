@@ -46,7 +46,7 @@ export function useStats(from: string, to: string) {
   });
 }
 
-export function useExpenses(params: { from?: string; to?: string; limit?: number } = {}) {
+export function useExpenses(params: { from?: string; to?: string; limit?: number; category_id?: number } = {}) {
   return useQuery({
     queryKey: ["expenses", params],
     queryFn: () => api<ExpenseList>(`/api/expenses${queryString(params)}`),

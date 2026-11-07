@@ -1,7 +1,7 @@
 // Plan: this month's budget, today's limit and what's left, what's been saved for surprises,
 // the bigger spends set aside, and the Sunday check-in. Talk to Finlyt to make or change it.
 import { router } from "expo-router";
-import { BookmarkCheck, CalendarClock, ChartColumn, Check, MessagesSquare, PiggyBank } from "lucide-react-native";
+import { BookmarkCheck, CalendarClock, ChartColumn, Check, MessagesSquare } from "lucide-react-native";
 import { useEffect, useState } from "react";
 import { ActivityIndicator, ScrollView, View } from "react-native";
 import Animated, { FadeInDown } from "react-native-reanimated";
@@ -30,6 +30,37 @@ function shortDate(iso: string): string {
 }
 
 const appear = (i: number) => FadeInDown.delay(80 * i).duration(400);
+
+/** A small figure in a quiet tile. */
+function Stat({
+  label,
+  value,
+  note,
+  danger = false,
+  accent = false,
+}: {
+  label: string;
+  value: string;
+  note?: string;
+  danger?: boolean;
+  accent?: boolean;
+}) {
+  return (
+    <View className="flex-1 rounded-3xl bg-surface px-4 py-3.5">
+      <Txt tone="muted" className="text-xs" numberOfLines={1}>
+        {label}
+      </Txt>
+      <Txt weight="semibold" tone={danger ? "danger" : accent ? "accent" : "fg"} className="mt-1 text-lg">
+        {value}
+      </Txt>
+      {note ? (
+        <Txt tone={danger ? "danger" : "muted"} className="text-xs" numberOfLines={1}>
+          {note}
+        </Txt>
+      ) : null}
+    </View>
+  );
+}
 
 export default function PlanOverview() {
   const { colors } = useTheme();
@@ -146,67 +177,53 @@ export default function PlanOverview() {
   return (
     <View className="flex-1 bg-bg">
       <ScrollView contentContainerClassName="px-5 pb-8 pt-2">
-        <Animated.View entering={appear(0)}>
-          <SectionLabel>{month}</SectionLabel>
-          <View className="mt-2 flex-row items-baseline">
-            <Txt weight="bold" className="text-4xl" style={{ letterSpacing: -1 }}>
-              {formatPaise(st.spent_month_paise)}
-            </Txt>
-            {budget ? (
-              <Txt tone="muted" className="ml-2 text-base">
-                of {formatPaise(budget)}
-              </Txt>
-            ) : null}
-          </View>
-          {budget ? (
-            <View className="mt-3">
-              <Bar ratio={st.spent_month_paise / budget} danger={st.spent_month_paise > budget} />
-            </View>
-          ) : null}
-          <Txt tone="muted" className="mt-2 text-sm">
-            {st.days_left} {st.days_left === 1 ? "day" : "days"} left
-            {budget ? ` · ${formatPaise(Math.max(budget - st.spent_month_paise, 0))} to go` : ""}
-          </Txt>
-        </Animated.View>
-
         {st.plan ? (
-          <Animated.View entering={appear(1)}>
-          <View className="mt-6 rounded-3xl bg-surface p-4">
-            <View className="flex-row items-baseline justify-between">
-              <Txt weight="medium">Today</Txt>
-              <Txt weight="semibold" tone={left < 0 ? "danger" : "fg"}>
-                {left >= 0 ? `${formatPaise(left)} left` : `${formatPaise(-left)} over`}
-                <Txt tone="muted" className="text-sm">
-                  {" "}
-                  of {formatPaise(limit)}
-                </Txt>
-              </Txt>
-            </View>
+          <Animated.View entering={appear(0)}>
+            <Txt tone="muted" className="text-sm">
+              Today{st.today_is_big_day ? " · a bigger day" : ""}
+            </Txt>
+            <Txt weight="bold" tone={left < 0 ? "danger" : "fg"} className="mt-1 text-5xl" style={{ letterSpacing: -1.2 }}>
+              {formatPaise(Math.abs(left))}
+            </Txt>
+            <Txt tone="muted" className="text-sm">
+              {left >= 0 ? `left of today's ${formatPaise(limit)}` : `over today's ${formatPaise(limit)}`}
+            </Txt>
             <View className="mt-3">
               <Bar ratio={st.today_spent_paise / Math.max(limit, 1)} danger={left < 0} />
             </View>
-            {st.plan && bigDays > 0 && st.plan.big_day_limit_paise ? (
-              <Txt tone="muted" className="mt-3 text-sm leading-5">
-                {st.today_is_big_day ? "A bigger day today. " : ""}
-                Usual days {formatPaise(st.plan.daily_limit_paise)}, up to {bigDays} bigger{" "}
-                {bigDays === 1 ? "day" : "days"} a week at {formatPaise(st.plan.big_day_limit_paise)}.{" "}
+            {bigDays > 0 && st.plan.big_day_limit_paise ? (
+              <Txt tone="muted" className="mt-2 text-sm">
                 {st.big_days_left === 0
-                  ? "None left this week."
-                  : `${st.big_days_left} left this week.`}
+                  ? "No bigger days left this week"
+                  : `${st.big_days_left} bigger ${st.big_days_left === 1 ? "day" : "days"} left this week, up to ${formatPaise(st.plan.big_day_limit_paise)}`}
               </Txt>
             ) : null}
-            <View className="mt-4 flex-row items-center gap-2">
-              <Icon icon={PiggyBank} size={18} tone={buffer >= 0 ? "accent" : "danger"} />
-              <Txt tone="muted" className="flex-1 text-sm">
-                {buffer >= 0 ? "Saved for surprises" : "Over plan this month"}
-              </Txt>
-              <Txt weight="semibold" tone={buffer >= 0 ? "accent" : "danger"}>
-                {formatPaise(Math.abs(buffer))}
-              </Txt>
-            </View>
-          </View>
           </Animated.View>
         ) : null}
+
+        <Animated.View entering={appear(1)} className="mt-6 flex-row gap-3">
+          <Stat
+            label={budget ? `${month} budget` : month}
+            value={formatPaise(st.spent_month_paise)}
+            note={
+              budget
+                ? st.spent_month_paise > budget
+                  ? `${formatPaise(st.spent_month_paise - budget)} over ${formatPaise(budget)}`
+                  : `of ${formatPaise(budget)} · ${st.days_left} ${st.days_left === 1 ? "day" : "days"} left`
+                : `${st.days_left} ${st.days_left === 1 ? "day" : "days"} left`
+            }
+            danger={budget > 0 && st.spent_month_paise > budget}
+          />
+          {st.plan ? (
+            <Stat
+              label={buffer >= 0 ? "Saved for surprises" : "Over plan"}
+              value={formatPaise(Math.abs(buffer))}
+              note="this month"
+              danger={buffer < 0}
+              accent={buffer > 0}
+            />
+          ) : null}
+        </Animated.View>
 
         {st.planned_items.length > 0 ? (
           <Animated.View entering={appear(2)}>
@@ -246,11 +263,6 @@ export default function PlanOverview() {
         <Animated.View entering={appear(3)}>
           <SectionLabel className="mb-1 mt-8">More</SectionLabel>
           {links}
-          {st.plan?.notes ? (
-            <Txt tone="muted" className="mt-3 text-sm leading-5">
-              Last check-in: {st.plan.notes}
-            </Txt>
-          ) : null}
         </Animated.View>
       </ScrollView>
       {footer}

@@ -3,13 +3,15 @@
 // the baseline, a hairline baseline and limit line (never dashed), text in text colours, and
 // labels only where they help. Tap a day to read it; the biggest day is labelled until you do.
 import { useState } from "react";
+import { ChevronRight } from "lucide-react-native";
+import type { ReactNode } from "react";
 import { Pressable, View, type LayoutChangeEvent } from "react-native";
-import Svg, { Line, Path } from "react-native-svg";
+import Svg, { Circle, Line, Path } from "react-native-svg";
 
 import { formatPaise } from "@/lib/money";
 import { useTheme } from "@/lib/theme";
 
-import { Txt } from "./ui";
+import { Icon, Txt } from "./ui";
 
 /** A column with rounded top corners and a square foot on the baseline. */
 function column(x: number, y: number, w: number, h: number): string {
@@ -109,7 +111,7 @@ export function RankedBars({
   rows,
   showUsual = true,
 }: {
-  rows: { key: string; label: string; paise: number; usualPaise?: number | null; detail?: string }[];
+  rows: { key: string; label: string; paise: number; usualPaise?: number | null; detail?: string; onPress?: () => void }[];
   showUsual?: boolean;
 }) {
   const { colors } = useTheme();
@@ -134,14 +136,21 @@ export function RankedBars({
         </View>
       ) : null}
       {rows.map((r) => (
-        <View key={r.key}>
-          <View className="flex-row items-baseline justify-between gap-3">
+        <Pressable
+          key={r.key}
+          onPress={r.onPress}
+          disabled={!r.onPress}
+          accessibilityRole={r.onPress ? "button" : undefined}
+          className="active:opacity-60"
+        >
+          <View className="flex-row items-center justify-between gap-3">
             <Txt weight="medium" className="flex-1 text-sm" numberOfLines={1}>
               {r.label}
             </Txt>
             <Txt weight="semibold" className="text-sm">
               {formatPaise(r.paise)}
             </Txt>
+            {r.onPress ? <Icon icon={ChevronRight} size={14} tone="faint" /> : null}
           </View>
           <View className="mt-1.5 h-3 justify-center">
             <View className="h-2 rounded-r" style={{ width: `${Math.max((r.paise / scale) * 100, r.paise > 0 ? 1 : 0)}%`, backgroundColor: colors.chart, borderTopRightRadius: 4, borderBottomRightRadius: 4 }} />
@@ -154,7 +163,7 @@ export function RankedBars({
               {r.detail}
             </Txt>
           ) : null}
-        </View>
+        </Pressable>
       ))}
     </View>
   );
@@ -166,6 +175,48 @@ export function Meter({ ratio }: { ratio: number }) {
   return (
     <View className="h-2 overflow-hidden rounded-full" style={{ backgroundColor: colors.accentSoft }}>
       <View className="h-2 rounded-full" style={{ width: `${Math.min(Math.max(ratio, 0), 1) * 100}%`, backgroundColor: colors.chart }} />
+    </View>
+  );
+}
+
+/** One ratio against a limit, as a ring: the same-hue track, filled to the share, red when over. */
+export function Ring({
+  ratio,
+  over = false,
+  size = 184,
+  stroke = 12,
+  children,
+}: {
+  ratio: number;
+  over?: boolean;
+  size?: number;
+  stroke?: number;
+  children?: ReactNode;
+}) {
+  const { colors } = useTheme();
+  const r = (size - stroke) / 2;
+  const length = 2 * Math.PI * r;
+  const fill = over ? 1 : Math.min(Math.max(ratio, 0), 1);
+  return (
+    <View style={{ width: size, height: size }} className="items-center justify-center">
+      <Svg width={size} height={size} style={{ position: "absolute" }}>
+        <Circle cx={size / 2} cy={size / 2} r={r} stroke={colors.accentSoft} strokeWidth={stroke} fill="none" />
+        {fill > 0 ? (
+          <Circle
+            cx={size / 2}
+            cy={size / 2}
+            r={r}
+            stroke={over ? colors.danger : colors.chart}
+            strokeWidth={stroke}
+            fill="none"
+            strokeDasharray={`${length} ${length}`}
+            strokeDashoffset={length * (1 - fill)}
+            strokeLinecap="round"
+            transform={`rotate(-90 ${size / 2} ${size / 2})`}
+          />
+        ) : null}
+      </Svg>
+      {children}
     </View>
   );
 }

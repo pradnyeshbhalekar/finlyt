@@ -148,6 +148,14 @@ The user wants to stay free. Gemini stays primary; **Groq is the fallback** (`fi
 - **Not yet active:** the user hasn't made a Groq key. When they do: put it in the root `.env` → copy to `backend/.env` → `printf %s "$KEY" | npx vercel@65.11.0 env add GROQ_API_KEY production --force --sensitive` → deploy (ask first). Then run the casual-input smoke test against Groq alone to check its Hinglish accuracy.
 - Free-tier notes (Nov 2026; Google no longer publishes numbers, so check AI Studio): Flash-Lite about 500 requests/day; Flash varies. Groq `gpt-oss-120b` about 1,000 requests/day and 200k tokens/day (about 80 Finlyt calls).
 
+## Cleaner Plan and report, a ring, tappable categories (2026-11-07, ~12:50)
+
+- **Duplicates confirmed** in the report's biggest spends: "Room rent for November ₹8,000" twice and "SIP in Nifty 50 index fund ₹2,000" twice on 1 Nov (from importing the same chat more than once). The History banner lists them; the user should delete one of each.
+- Report top: `Ring` (charts.tsx; `accentSoft` track, `chart` fill, red when over, full) for the budget spent, with the total and "of ₹budget"/"₹X over budget" inside, then "N of M days" and the comparison. Below it, three small tiles: A day, On pace for, Usually. Without a budget it shows just the hero number. Asked whether a ring makes sense, I said yes for one ratio (budget used), not for days passed as well.
+- "Where it went" rows are tappable (`RankedBars` rows take `onPress` and show a chevron) → `app/category.tsx?month&category_id&name` (the month's entries in that category by day, via `useExpenses({from,to,category_id})`). "N more" expands to all. The per-category "on pace" lines are gone, and the pace note is one short line.
+- Plan: today first (amount left, big, one bar, a bigger-days line), then two `Stat` tiles (the month against the budget, and saved for surprises or over plan). The "Last check-in: …" note is gone.
+- History: the instruction line is gone (the duplicates banner stays).
+
 ## A calmer Home (2026-11-07, ~12:40)
 
 The user: "there are too much going on, keep everything clean". Home had: the check-in label, today's amount and "N to log", a month line (spent, budget, owed, you owe), the plan strip (bar, left today, bigger days left, buffer), the "November so far" card with 3 bars, To log, today's entries, the hint and the composer. Now (`components/home-summary.tsx`):
