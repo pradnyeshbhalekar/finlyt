@@ -1,6 +1,8 @@
 // Bank payments picked up from SMS, waiting to be explained. Tap one and the composer asks
-// "What was Zomato?"; long-press to mark it as a transfer, income or not spending.
+// "What was Zomato?"; long-press to mark it as a transfer, income or not spending. Three show at
+// first (plus the one you picked), to keep Home calm; "See all" shows the rest.
 import { MessageSquareText } from "lucide-react-native";
+import { useState } from "react";
 import { Alert, Pressable, View } from "react-native";
 
 import { timeLabel } from "@/lib/dates";
@@ -22,7 +24,9 @@ export function ToLog({
   onSelect: (txn: BankTxnItem | null) => void;
   onResolve: (txn: BankTxnItem, status: "transfer" | "ignored" | "income") => void;
 }) {
+  const [all, setAll] = useState(false);
   if (txns.length === 0) return null;
+  const shown = all ? txns : txns.filter((t, i) => i < 3 || t.id === selectedId);
 
   function askResolve(t: BankTxnItem) {
     const credit = t.direction === "credit";
@@ -41,9 +45,9 @@ export function ToLog({
 
   return (
     <View className="mt-8">
-      <SectionLabel>To log</SectionLabel>
+      <SectionLabel>To log · {txns.length}</SectionLabel>
       <View className="-mx-3 mt-2">
-        {txns.map((t) => {
+        {shown.map((t) => {
           const selected = t.id === selectedId;
           const credit = t.direction === "credit";
           const account = accounts.get(t.account_id)?.name;
@@ -75,6 +79,13 @@ export function ToLog({
           );
         })}
       </View>
+      {txns.length > shown.length || all ? (
+        <Pressable onPress={() => setAll(!all)} hitSlop={6} className="mt-1 self-start py-1">
+          <Txt weight="medium" tone="accent" className="text-sm">
+            {all ? "Show fewer" : `See all ${txns.length}`}
+          </Txt>
+        </Pressable>
+      ) : null}
     </View>
   );
 }

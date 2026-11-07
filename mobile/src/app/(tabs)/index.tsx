@@ -10,8 +10,7 @@ import { Coin, HeaderLogo, type Mood } from "@/components/brand";
 import { Composer } from "@/components/composer";
 import { ExpenseRow } from "@/components/expense-row";
 import { KeyboardAware } from "@/components/keyboard";
-import { MonthGlance } from "@/components/month-glance";
-import { PlanStrip } from "@/components/plan-strip";
+import { CheckInNudge, SummaryTiles, TodayHero } from "@/components/home-summary";
 import { ProposalCard } from "@/components/proposal-card";
 import { useTabBarHeight } from "@/components/tab-bar";
 import { SmsPermissionCard, ToLog } from "@/components/to-log";
@@ -28,12 +27,6 @@ import {
 } from "@/lib/log";
 import { logDraft, useLogDraft } from "@/lib/log-draft";
 import { formatPaise } from "@/lib/money";
-import {
-  currentCheckIn,
-  DEFAULT_REMINDERS,
-  getReminderTimes,
-  type ReminderTime,
-} from "@/lib/notifications";
 import { useAuth } from "@/lib/auth";
 import { usePrefs } from "@/lib/prefs";
 import {
@@ -108,11 +101,7 @@ export default function Home() {
     };
   }, []);
 
-  const [reminders, setReminders] = useState<ReminderTime[]>(DEFAULT_REMINDERS);
   const [example] = useState(() => EXAMPLES[Math.floor(Math.random() * EXAMPLES.length)]);
-  useEffect(() => {
-    void getReminderTimes().then(setReminders);
-  }, []);
 
   // Bank SMS: ask once, then pick up new payments whenever Home opens or the app comes back.
   const [smsAllowed, setSmsAllowed] = useState(smsPermitted);
@@ -252,7 +241,8 @@ export default function Home() {
   const busy = propose.isPending;
   // The logo's coin reacts: thinking while Gemini reads, happy for a few seconds after a save.
   const headerMood: Mood = busy || commit.isPending ? "thinking" : saved ? "happy" : restingMood;
-  const showHint = !text && !pending && !saved && !notice && !busy;
+  // The "Try: …" example only helps before anything's logged today.
+  const showHint = !text && !pending && !saved && !notice && !busy && items.length === 0;
   const toLog = txns.data?.items ?? [];
 
   return (
@@ -271,51 +261,14 @@ export default function Home() {
             <RefreshControl refreshing={todays.isRefetching} onRefresh={refresh} tintColor={colors.muted} />
           }
         >
-          <Txt tone="muted" className="mt-6 text-sm">
-            {currentCheckIn(reminders, now) ?? "Today"}
-          </Txt>
-          <View className="mt-1 flex-row items-end justify-between">
-            <Txt weight="bold" className="text-5xl" style={{ letterSpacing: -1 }}>
-              {formatPaise(day.data?.spend_paise ?? 0)}
-            </Txt>
-            <Txt tone="muted" className="mb-2 text-sm">
-              {toLog.length > 0 ? `${toLog.length} to log` : `${items.length} logged`}
-            </Txt>
-          </View>
-          <View className="mt-1 flex-row flex-wrap">
-            <Pressable onPress={() => router.push("/report")} hitSlop={6} accessibilityHint="Opens this month's report">
-              <Txt tone="muted" className="text-sm">
-                {formatPaise(month.data?.spend_paise ?? 0)} this month
-                {plan.data?.budget_paise && (month.data?.spend_paise ?? 0) <= plan.data.budget_paise
-                  ? ` of ${formatPaise(plan.data.budget_paise)}`
-                  : ""}
-                {plan.data?.budget_paise && (month.data?.spend_paise ?? 0) > plan.data.budget_paise ? (
-                  <Txt tone="danger" className="text-sm">
-                    {`, ${formatPaise((month.data?.spend_paise ?? 0) - plan.data.budget_paise)} over budget`}
-                  </Txt>
-                ) : null}
-              </Txt>
-            </Pressable>
-            {owed > 0 ? (
-              <Pressable onPress={() => router.push("/owed")} hitSlop={6}>
-                <Txt tone="accent" className="text-sm">
-                  {"  ·  "}
-                  {formatPaise(owed)} owed to you
-                </Txt>
-              </Pressable>
-            ) : null}
-            {iOwe > 0 ? (
-              <Pressable onPress={() => router.push("/owed")} hitSlop={6}>
-                <Txt tone="muted" className="text-sm">
-                  {"  ·  "}
-                  you owe {formatPaise(iOwe)}
-                </Txt>
-              </Pressable>
-            ) : null}
-          </View>
-
-          <PlanStrip status={plan.data} />
-          <MonthGlance />
+          <TodayHero spentPaise={day.data?.spend_paise ?? 0} plan={plan.data} />
+          <SummaryTiles
+            monthPaise={month.data?.spend_paise ?? 0}
+            budgetPaise={plan.data?.budget_paise ?? null}
+            owedToMePaise={owed}
+            iOwePaise={iOwe}
+          />
+          <CheckInNudge plan={plan.data} />
 
           {busy ? (
             <View className="mt-6 flex-row items-center gap-3 rounded-3xl bg-surface p-4">
@@ -354,7 +307,7 @@ export default function Home() {
           />
 
           <View className="mt-8 flex-row items-center justify-between">
-            <SectionLabel>Today</SectionLabel>
+            <SectionLabel>Logged today</SectionLabel>
           </View>
           <View className="-mx-3 mt-2">
             {items.map((e) => (

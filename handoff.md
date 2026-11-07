@@ -148,6 +148,16 @@ The user wants to stay free. Gemini stays primary; **Groq is the fallback** (`fi
 - **Not yet active:** the user hasn't made a Groq key. When they do: put it in the root `.env` → copy to `backend/.env` → `printf %s "$KEY" | npx vercel@65.11.0 env add GROQ_API_KEY production --force --sensitive` → deploy (ask first). Then run the casual-input smoke test against Groq alone to check its Hinglish accuracy.
 - Free-tier notes (Nov 2026; Google no longer publishes numbers, so check AI Studio): Flash-Lite about 500 requests/day; Flash varies. Groq `gpt-oss-120b` about 1,000 requests/day and 200k tokens/day (about 80 Finlyt calls).
 
+## A calmer Home (2026-11-07, ~12:40)
+
+The user: "there are too much going on, keep everything clean". Home had: the check-in label, today's amount and "N to log", a month line (spent, budget, owed, you owe), the plan strip (bar, left today, bigger days left, buffer), the "November so far" card with 3 bars, To log, today's entries, the hint and the composer. Now (`components/home-summary.tsx`):
+- `TodayHero`: "Today", the amount, one thin bar against today's limit, and one line ("₹65 left of today's ₹100" / "₹40 over"). Tapping it opens Plan.
+- `SummaryTiles`: two quiet tiles. The month tile (spent; "of ₹budget" or "₹X over budget"; opens /report) and Owed (to you, plus "you owe ₹Y"; opens /owed).
+- `CheckInNudge`: a slim row only when a check-in is due or there's no plan.
+- To log shows 3 (plus a picked one) with "See all N"; the heading is "To log · N".
+- Today's entries are headed "Logged today". The "Try: …" hint shows only before anything's logged today.
+- Removed from Home (Plan and the report still have them): bigger days left, the buffer line, the category card. `plan-strip.tsx` and `month-glance.tsx` are deleted.
+
 ## UI review on the phone (2026-11-07, ~12:20)
 
 Screenshots over adb (only when `mCurrentFocus` is com.finlyt.app; helper `scratchpad/screens/shot.sh <name> [deep-link]`, screenshots deleted after reading). Found and fixed:
@@ -156,7 +166,7 @@ Screenshots over adb (only when `mCurrentFocus` is com.finlyt.app; helper `scrat
 - "over the day's limit on 1 days" is now singular when it's 1.
 - Ask wrote "₹-690". The prompt now says never to write a negative amount ("₹690 over"/"short"), and to use whole rupees for averages.
 - **Overlapping imports:** Settings showed 3 imports from Claude (18 entries 27 Oct–6 Nov, 3 on 2 Nov, 17 entries 27 Oct–5 Nov), so there are likely duplicates (this may be why November shows ₹33,350). New `GET /api/expenses/duplicates` (`expenses.possible_duplicates`): the same IST day and total, at least one imported, not all from the same batch (two hand-logged ₹20 chais aren't flagged). History shows a warn banner "N possible duplicates… Review" → `app/duplicates.tsx`, which groups them with a delete per copy.
-- **Needs:** a Vercel deploy (the new pace numbers and the duplicates route) and an install.
+- Deployed, installed (12:33) and pushed (`54d7513`) at the user's "deploy it, install it and push it".
 
 ## Logging asked "what was the amount?" though a payment had it; bottom bar without the pill (2026-11-07, ~10:45)
 
