@@ -65,12 +65,16 @@ def test_month_report_says_where_the_money_went(client, me, app):
     food = r["categories"][0]
     assert food["name"] == "Food" and food["spent_paise"] == 6000_00
     assert food["usual_paise"] == (3000 + 5000) // 2 * 100
-    assert food["pace_paise"] == 6000_00 * 30 // 20
+    assert food["pace_paise"] == 6000_00  # one ₹6,000 dinner isn't projected over the month
     assert r["usual"]["months"] == 2
     assert r["last_month"]["label"] == "October" and r["last_month"]["same_point_paise"] == (5000 + 499) * 100
     assert r["money_in"]["income_paise"] == 45000_00
     assert r["money_in"]["income_source"] == "bank"
-    assert r["money_in"]["left_paise"] == 45000_00 - (6899 * 100 * 30 // 20)  # against the month's pace
+    # On pace: the dinner and Netflix (one-offs) count once; only the ₹400 auto is everyday.
+    assert r["pace_paise"] == (6000 + 499 + 400 * 30 // 20) * 100
+    assert r["one_off_paise"] == (6000 + 499) * 100 and r["everyday_paise"] == 400_00
+    assert r["money_in"]["left_paise"] == 45000_00 - r["pace_paise"]
+    assert r["money_in"]["spent_share"] == round(6899 / 45000, 4)
     assert r["unlogged"] == {"count": 1, "paise": 350_00}
     assert [b["description"] for b in r["biggest"]][:2] == ["Dinner out", "Netflix"]
     assert [x["description"] for x in r["regular"]] == ["Netflix"]
@@ -230,3 +234,29 @@ def test_saving_numbers_are_worked_out_for_the_ai(client, me, app):
     client.post("/api/ask", json={"text": "am i saving enough?"})
     assert "Income left after commitments: ₹42,000 a month." in peek.system
     assert "Saving 20% of that is ₹8,400 a month, which leaves ₹33,600" in peek.system
+
+
+def test_rent_isnt_projected_over_the_month(client, me):
+    spend(client, me, "2026-11-01", "Rent", 16000, "Rent")
+    spend(client, me, "2026-11-02", "Food", 100, "Lunch")
+    spend(client, me, "2026-11-03", "Food", 100, "Lunch")
+    r = client.get("/api/reports/month").get_json()
+    # 20 days in: rent once, plus ₹200 of food at that rate for 30 days.
+    assert r["pace_paise"] == (16000 + 200 * 30 // 20) * 100
+    assert r["per_day_paise"] % 100 == 0  # whole rupees
+
+
+def test_possible_duplicates_from_overlapping_imports(client, me):
+    def entry(desc: str) -> dict:
+        return {"kind": "expense", "occurred_at": "2026-11-05T12:00:00+05:30", "description": desc,
+                "category_id": me["cat"]["Groceries"], "amount_paise": 2360_00,
+                "payments": [{"account_id": me["acc"]["DNS Bank"], "amount_paise": 2360_00}]}
+    client.post("/api/import/commit", json={"source": "claude", "entries": [entry("Groceries")]})
+    client.post("/api/import/commit", json={"source": "claude", "entries": [entry("Groceries at DMart")]})
+    # Two ₹20 chais logged by hand on one day aren't duplicates.
+    for _ in range(2):
+        spend(client, me, "2026-11-06", "Food", 20, "Chai")
+    groups = client.get("/api/expenses/duplicates").get_json()["groups"]
+    assert len(groups) == 1
+    assert groups[0]["total_paise"] == 2360_00
+    assert sorted(i["description"] for i in groups[0]["items"]) == ["Groceries", "Groceries at DMart"]

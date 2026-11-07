@@ -147,7 +147,9 @@ export function ReportView({ report: r }: { report: MonthReport }) {
           <Meter ratio={r.spent_paise / r.budget.budget_paise} />
           <Txt tone="muted" className="mt-1.5 text-xs">
             {formatPaise(r.spent_paise)} of your {formatPaise(r.budget.budget_paise)} budget
-            {r.budget.days_over_limit ? ` · over the day's limit on ${r.budget.days_over_limit} days` : ""}
+            {r.budget.days_over_limit
+              ? ` · over the day's limit on ${r.budget.days_over_limit} ${r.budget.days_over_limit === 1 ? "day" : "days"}`
+              : ""}
           </Txt>
         </View>
       ) : null}
@@ -160,12 +162,22 @@ export function ReportView({ report: r }: { report: MonthReport }) {
             hint={r.money_in.income_source === "memory" ? "what you told Finlyt" : income ? undefined : "tell Finlyt in Ask"}
           />
           <Tile label={r.current ? "Spent, on pace" : "Spent"} value={formatPaise(r.current ? r.pace_paise : r.spent_paise)} />
-          <Tile
-            label="Left"
-            value={left === null ? "–" : formatPaise(left)}
-            hint={saved === null ? undefined : `${Math.round(saved * 100)}% of income`}
-          />
+          {left !== null && left < 0 ? (
+            <Tile label="Over" value={formatPaise(-left)} hint="more than your income" />
+          ) : (
+            <Tile
+              label="Left"
+              value={left === null ? "–" : formatPaise(left)}
+              hint={saved === null ? undefined : `${Math.round(saved * 100)}% of income`}
+            />
+          )}
         </View>
+        {r.current && r.one_off_paise > 0 ? (
+          <Txt tone="muted" className="mt-2 text-xs leading-4">
+            On pace counts rent, bills and big buys ({formatPaise(r.one_off_paise)}) once, and projects your everyday
+            spending ({formatPaise(r.everyday_paise)} so far) over the rest of the month.
+          </Txt>
+        ) : null}
         {r.money_in.commitments_paise ? (
           <Txt tone="muted" className="mt-2 text-xs">
             Commitments take {formatPaise(r.money_in.commitments_paise)} a month of that.

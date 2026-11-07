@@ -5,13 +5,14 @@ import { router } from "expo-router";
 import {
   ArrowDownLeft,
   ArrowLeftRight,
+  Copy,
   EyeOff,
   HandCoins,
   Target,
   UserRound,
   type LucideIcon,
 } from "lucide-react-native";
-import { ActivityIndicator, Alert, SectionList, View } from "react-native";
+import { ActivityIndicator, Alert, Pressable, SectionList, View } from "react-native";
 
 import { Coin } from "@/components/brand";
 import { CategoryBadge } from "@/components/category-icon";
@@ -19,7 +20,7 @@ import { ExpenseRow } from "@/components/expense-row";
 import { Icon, Row, Txt } from "@/components/ui";
 import { dayLabel, isoDate, timeLabel } from "@/lib/dates";
 import { formatPaise } from "@/lib/money";
-import { useActivity, useDeleteExpense, useMeta } from "@/lib/queries";
+import { useActivity, useDeleteExpense, useDuplicates, useMeta } from "@/lib/queries";
 import { useTheme } from "@/lib/theme";
 import type { ActivityItem, Expense } from "@/lib/types";
 
@@ -64,6 +65,8 @@ export default function History() {
   const { colors } = useTheme();
   const meta = useMeta();
   const feed = useActivity();
+  const dupes = useDuplicates();
+  const dupeCount = (dupes.data?.groups ?? []).reduce((n, g) => n + g.items.length - 1, 0);
   const remove = useDeleteExpense();
 
   const accounts = new Map((meta.data?.accounts ?? []).map((a) => [a.id, a]));
@@ -151,6 +154,23 @@ export default function History() {
           <Txt tone="muted" className="text-sm">
             Everything, newest first. Tap an entry to open it; long-press to delete.
           </Txt>
+          {dupeCount > 0 ? (
+            <Pressable
+              onPress={() => router.push("/duplicates")}
+              accessibilityRole="button"
+              className="mt-3 flex-row items-center gap-3 rounded-2xl px-4 py-3 active:opacity-70"
+              style={{ backgroundColor: colors.warnBg }}
+            >
+              <Icon icon={Copy} size={18} tone="fg" />
+              <Txt weight="medium" className="flex-1 text-sm" style={{ color: colors.warnFg }}>
+                {dupeCount} possible {dupeCount === 1 ? "duplicate" : "duplicates"}, likely from importing the same chat
+                twice
+              </Txt>
+              <Txt weight="semibold" className="text-sm" style={{ color: colors.warnFg }}>
+                Review
+              </Txt>
+            </Pressable>
+          ) : null}
           {feed.error ? (
             <Txt tone="danger" className="mt-2 text-sm">
               {feed.error.message}

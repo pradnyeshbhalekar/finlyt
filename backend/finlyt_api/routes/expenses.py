@@ -61,6 +61,14 @@ def edit_expense(expense_id: int):
     return expense_json(get_expense(s, user_id, expense.id))
 
 
+@bp.get("/expenses/duplicates")
+def duplicates():
+    """Groups that look like the same expense twice (e.g. two imports of the same chat)."""
+    from ..services.expenses import possible_duplicates
+
+    return {"groups": possible_duplicates(get_session(), current_user().id)}
+
+
 @bp.delete("/expenses/<int:expense_id>")
 def remove_expense(expense_id: int):
     s = get_session()

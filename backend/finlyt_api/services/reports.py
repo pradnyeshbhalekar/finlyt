@@ -26,6 +26,14 @@ from ..timeutil import IST, ist_day_bounds, today_ist
 from . import debts, memory, planning
 
 USUAL_MONTHS = 3
+# Spending that happens once a month, not every day: never projected forward ("on pace").
+ONE_OFF_CATEGORIES = {"rent", "bills", "investments", "education", "travel", "gifts"}
+BIG_ONE_OFF_PAISE = 2000_00
+
+
+def whole(paise: int) -> int:
+    """Round to whole rupees (averages and projections shouldn't show paise)."""
+    return round(paise / 100) * 100
 
 
 def month_start(day: date) -> date:
@@ -157,11 +165,14 @@ def month_report(s: Session, user_id: int, first: date) -> dict[str, Any]:
     days_in_month = (last - first).days + 1
 
     by_day = {first + timedelta(days=i): 0 for i in range(days_counted)}
-    by_cat: dict[int | None, list[int]] = defaultdict(lambda: [0, 0])
+    by_cat: dict[int | None, list[int]] = defaultdict(lambda: [0, 0, 0])  # spent, entries, everyday part
     for r in rows:
         by_day[r.occurred_at.astimezone(IST).date()] += r.my_share_paise
         by_cat[r.category_id][0] += r.my_share_paise
         by_cat[r.category_id][1] += 1
+        one_off = names.get(r.category_id, "").lower() in ONE_OFF_CATEGORIES or r.my_share_paise >= BIG_ONE_OFF_PAISE
+        if not one_off:
+            by_cat[r.category_id][2] += r.my_share_paise
 
     usual, usual_total, usual_months = _usual(s, user_id, first)
     # The same point in last month, for a fair comparison mid-month.
@@ -170,8 +181,14 @@ def month_report(s: Session, user_id: int, first: date) -> dict[str, Any]:
     prev_total = sum(_spend_by_category(s, user_id, prev, month_end(prev)).values())
     prev_same_point = sum(_spend_by_category(s, user_id, prev, prev_end).values())
 
-    def pace(paise: int) -> int:
-        return paise * days_in_month // days_counted if current else paise
+    def pace(spent_paise: int, everyday_paise: int) -> int:
+        """The month at today's rate: one-offs (rent, bills, big buys) count once, and only
+        everyday spending is projected over the days left."""
+        if not current:
+            return spent_paise
+        return whole(spent_paise - everyday_paise + everyday_paise * days_in_month // days_counted)
+
+    everyday_total = sum(v[2] for v in by_cat.values())
 
     categories = [
         {
@@ -181,9 +198,9 @@ def month_report(s: Session, user_id: int, first: date) -> dict[str, Any]:
             "entries": count,
             "share": round(paise / spent, 4) if spent else 0,
             "usual_paise": usual.get(cid) if usual_months else None,
-            "pace_paise": pace(paise),
+            "pace_paise": pace(paise, everyday),
         }
-        for cid, (paise, count) in sorted(by_cat.items(), key=lambda kv: -kv[1][0])
+        for cid, (paise, count, everyday) in sorted(by_cat.items(), key=lambda kv: -kv[1][0])
     ]
 
     paid_from = [
@@ -277,8 +294,10 @@ def month_report(s: Session, user_id: int, first: date) -> dict[str, Any]:
         "days_in_month": days_in_month,
         "spent_paise": spent,
         "entries": len(rows),
-        "per_day_paise": spent // days_counted if days_counted else 0,
-        "pace_paise": pace(spent),
+        "per_day_paise": whole(spent // days_counted) if days_counted else 0,
+        "everyday_paise": everyday_total,
+        "one_off_paise": spent - everyday_total,
+        "pace_paise": pace(spent, everyday_total),
         "last_month": {
             "label": prev.strftime("%B"),
             "total_paise": prev_total,
@@ -297,8 +316,9 @@ def month_report(s: Session, user_id: int, first: date) -> dict[str, Any]:
             "income_source": "bank" if income else ("memory" if salary else None),
             "commitments_paise": committed,
             # What's left of the month's income after spending (on pace, for the current month).
-            "left_paise": month_income - pace(spent) if month_income else None,
-            "saved_share": round((month_income - pace(spent)) / month_income, 4) if month_income else None,
+            "left_paise": month_income - pace(spent, everyday_total) if month_income else None,
+            "saved_share": round((month_income - pace(spent, everyday_total)) / month_income, 4) if month_income else None,
+            "spent_share": round(spent / month_income, 4) if month_income else None,
         },
         "biggest": biggest,
         "regular": _regular(s, user_id, end, names),

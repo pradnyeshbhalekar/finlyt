@@ -205,3 +205,47 @@ def delete_expense(s: Session, expense: Expense) -> None:
     s.delete(expense)
     s.flush()
     sync_txn_statuses(s, txn_ids)
+
+
+def possible_duplicates(s: Session, user_id: int, days: int = 120) -> list[dict]:
+    """Expenses that look like the same thing twice: the same IST day and amount, where at least
+    one came from an import and they aren't all from the same import (two ₹20 chais logged on
+    the same day are left alone)."""
+    from collections import defaultdict
+    from datetime import timedelta
+
+    from .. import timeutil
+
+    since, _ = timeutil.ist_day_bounds(timeutil.today_ist() - timedelta(days=days), timeutil.today_ist())
+    rows = s.scalars(
+        select(Expense).where(Expense.user_id == user_id, Expense.occurred_at >= since).order_by(Expense.occurred_at, Expense.id)
+    ).all()
+    groups: dict[tuple, list[Expense]] = defaultdict(list)
+    for e in rows:
+        groups[(e.occurred_at.astimezone(timeutil.IST).date(), e.total_paise)].append(e)
+    out = []
+    for (day, total), items in groups.items():
+        if len(items) < 2 or not any(e.source == "import" for e in items):
+            continue
+        batches = {e.import_batch_id for e in items}
+        if len(batches) == 1 and None not in batches:
+            continue  # one import listing two of the same thing: probably real
+        out.append(
+            {
+                "day": day.isoformat(),
+                "total_paise": total,
+                "items": [
+                    {
+                        "id": e.id,
+                        "description": e.description,
+                        "category_id": e.category_id,
+                        "source": e.source,
+                        "import_batch_id": e.import_batch_id,
+                        "occurred_at": timeutil.to_ist_iso(e.occurred_at),
+                    }
+                    for e in items
+                ],
+            }
+        )
+    out.sort(key=lambda g: g["day"], reverse=True)
+    return out

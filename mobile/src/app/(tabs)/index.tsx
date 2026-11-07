@@ -285,8 +285,15 @@ export default function Home() {
           <View className="mt-1 flex-row flex-wrap">
             <Pressable onPress={() => router.push("/report")} hitSlop={6} accessibilityHint="Opens this month's report">
               <Txt tone="muted" className="text-sm">
-                {formatPaise(month.data?.spend_paise ?? 0)}
-                {plan.data?.budget_paise ? ` of ${formatPaise(plan.data.budget_paise)}` : ""} this month
+                {formatPaise(month.data?.spend_paise ?? 0)} this month
+                {plan.data?.budget_paise && (month.data?.spend_paise ?? 0) <= plan.data.budget_paise
+                  ? ` of ${formatPaise(plan.data.budget_paise)}`
+                  : ""}
+                {plan.data?.budget_paise && (month.data?.spend_paise ?? 0) > plan.data.budget_paise ? (
+                  <Txt tone="danger" className="text-sm">
+                    {`, ${formatPaise((month.data?.spend_paise ?? 0) - plan.data.budget_paise)} over budget`}
+                  </Txt>
+                ) : null}
               </Txt>
             </Pressable>
             {owed > 0 ? (

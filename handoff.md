@@ -148,6 +148,16 @@ The user wants to stay free. Gemini stays primary; **Groq is the fallback** (`fi
 - **Not yet active:** the user hasn't made a Groq key. When they do: put it in the root `.env` → copy to `backend/.env` → `printf %s "$KEY" | npx vercel@65.11.0 env add GROQ_API_KEY production --force --sensitive` → deploy (ask first). Then run the casual-input smoke test against Groq alone to check its Hinglish accuracy.
 - Free-tier notes (Nov 2026; Google no longer publishes numbers, so check AI Studio): Flash-Lite about 500 requests/day; Flash varies. Groq `gpt-oss-120b` about 1,000 requests/day and 200k tokens/day (about 80 Finlyt calls).
 
+## UI review on the phone (2026-11-07, ~12:20)
+
+Screenshots over adb (only when `mCurrentFocus` is com.finlyt.app; helper `scratchpad/screens/shot.sh <name> [deep-link]`, screenshots deleted after reading). Found and fixed:
+- **"₹1,17,928.57 over your income at this pace"** on Home, and in the report "₹4,764.28 a day · on pace for ₹1,42,928.57", "Left −₹1,17,928.57, −472%": after 7 days, everything, rent (₹16,000) and investments included, was multiplied by 30/7. Now `reports.pace` counts one-offs once (categories Rent, Bills, Investments, Education, Travel and Gifts, or any single item ₹2,000+) and projects only everyday spending. The report returns `everyday_paise`/`one_off_paise`, and per-day and pace are whole rupees (`whole`). Home's card now says "N% of your ₹X income spent" (or "₹Y more than your income") from what's actually spent, with no projection. The report says "Over ₹X, more than your income" instead of negatives, and explains the pace line.
+- Home's month line: "₹X this month, ₹Y over budget" in red when over (it said "₹33,350 of ₹10,545").
+- "over the day's limit on 1 days" is now singular when it's 1.
+- Ask wrote "₹-690". The prompt now says never to write a negative amount ("₹690 over"/"short"), and to use whole rupees for averages.
+- **Overlapping imports:** Settings showed 3 imports from Claude (18 entries 27 Oct–6 Nov, 3 on 2 Nov, 17 entries 27 Oct–5 Nov), so there are likely duplicates (this may be why November shows ₹33,350). New `GET /api/expenses/duplicates` (`expenses.possible_duplicates`): the same IST day and total, at least one imported, not all from the same batch (two hand-logged ₹20 chais aren't flagged). History shows a warn banner "N possible duplicates… Review" → `app/duplicates.tsx`, which groups them with a delete per copy.
+- **Needs:** a Vercel deploy (the new pace numbers and the duplicates route) and an install.
+
 ## Logging asked "what was the amount?" though a payment had it; bottom bar without the pill (2026-11-07, ~10:45)
 
 - The user logged "ice cream from the medical shop" and got "What was the amount for the ice cream?", although the price was in their bank payment. I couldn't reproduce it locally (flash-lite linked the payment every time: tapped, untapped, and with a phone-number UPI payee). The prompt said "If something has no amount, leave it out and ask". Now: a picked transaction's amount is the amount; with none picked, use a fitting waiting one (payee matches the place, or the only recent debit); if several could fit, ask *which* by amount and time, never "how much?".

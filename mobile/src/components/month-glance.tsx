@@ -15,6 +15,7 @@ export function MonthGlance() {
   const report = useMonthReport();
   const r = report.data;
   if (!r) return null;
+  const income = r.money_in.income_source === "bank" ? r.money_in.income_paise : r.money_in.salary_paise;
 
   const base = r.last_month.same_point_paise;
   const diff = r.spent_paise - base;
@@ -65,12 +66,11 @@ export function MonthGlance() {
           </Txt>
           <Icon icon={ChevronRight} size={16} tone="accent" />
         </Pressable>
-      ) : r.money_in.left_paise !== null ? (
-        <Txt tone={r.money_in.left_paise < 0 ? "danger" : "muted"} className="mt-3 text-sm">
-          {r.money_in.left_paise >= 0
-            ? `${formatPaise(r.money_in.left_paise)} of your income left`
-            : `${formatPaise(-r.money_in.left_paise)} over your income`}
-          {r.current ? " at this pace" : ""}
+      ) : income ? (
+        <Txt tone={r.spent_paise > income ? "danger" : "muted"} className="mt-3 text-sm">
+          {r.spent_paise > income
+            ? `${formatPaise(r.spent_paise - income)} more than your ${formatPaise(income)} income`
+            : `${Math.round((r.spent_paise / income) * 100)}% of your ${formatPaise(income)} income spent`}
         </Txt>
       ) : null}
     </View>

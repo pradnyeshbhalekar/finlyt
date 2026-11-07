@@ -4,6 +4,7 @@ import { File } from "expo-file-system";
 import { api, queryString } from "./api";
 import type {
   ActivityPage,
+  DuplicateGroup,
   AskThread,
   AskThreadList,
   AskTurn,
@@ -75,6 +76,7 @@ export function useRefreshMoney() {
       queryClient.invalidateQueries({ queryKey: ["balances"] }),
       queryClient.invalidateQueries({ queryKey: ["report"] }),
       queryClient.invalidateQueries({ queryKey: ["memory"] }),
+      queryClient.invalidateQueries({ queryKey: ["duplicates"] }),
     ]);
 }
 
@@ -366,4 +368,13 @@ export function useDeleteCommitment() {
 
 export function useDeleteNote() {
   return useMemoryChange((id: number) => api<MoneyMemory>(`/api/memory/notes/${id}`, { method: "DELETE" }));
+}
+
+/** Expenses that look like the same thing twice. */
+export function useDuplicates() {
+  return useQuery({
+    queryKey: ["duplicates"],
+    queryFn: () => api<{ groups: DuplicateGroup[] }>("/api/expenses/duplicates"),
+    retry: false,
+  });
 }

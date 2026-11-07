@@ -410,7 +410,10 @@ export type MonthReport = {
   spent_paise: number;
   entries: number;
   per_day_paise: number;
-  /** The month at today's rate (the same as spent for a past month). */
+  /** Day-to-day spending, and one-offs (rent, bills, investments, anything ₹2,000+). */
+  everyday_paise: number;
+  one_off_paise: number;
+  /** The month at today's rate: one-offs once, everyday spending projected (= spent for a past month). */
   pace_paise: number;
   last_month: { label: string; total_paise: number; same_point_paise: number };
   usual: { total_paise: number; months: number };
@@ -437,6 +440,8 @@ export type MonthReport = {
     /** Income left after spending, on pace for the current month. */
     left_paise: number | null;
     saved_share: number | null;
+    /** Share of the month's income spent so far. */
+    spent_share: number | null;
   };
   biggest: { expense_id: number; description: string; day: string; category: string; my_share_paise: number }[];
   regular: { description: string; category: string; typical_paise: number; months: number; last_day: string }[];
@@ -478,4 +483,18 @@ export type MoneyMemory = {
   commitments: Commitment[];
   notes: { id: number; text: string; created_at: string }[];
   updates?: MemoryUpdate[];
+};
+
+/** Expenses that look like the same thing twice (e.g. two imports of the same chat). */
+export type DuplicateGroup = {
+  day: string;
+  total_paise: number;
+  items: {
+    id: number;
+    description: string;
+    category_id: number | null;
+    source: "log" | "manual" | "import";
+    import_batch_id: number | null;
+    occurred_at: string;
+  }[];
 };
