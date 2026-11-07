@@ -54,6 +54,42 @@ export default function PlanOverview() {
   const st = plan.data;
   const categories = new Map((meta.data?.categories ?? []).map((c) => [c.id, c]));
   const month = st ? new Date(`${st.month}T00:00:00`).toLocaleDateString("en-IN", { month: "long" }) : "";
+  // The report, the memory and the check-in day: shown with or without a plan.
+  const links = (
+    <View className="-mx-3">
+      <Row
+        onPress={() => router.push("/report")}
+        leading={<Icon icon={ChartColumn} size={20} tone="muted" />}
+        title={`${month || new Date().toLocaleDateString("en-IN", { month: "long" })} report`}
+        subtitle="Where your money went, and how it compares"
+      />
+      <Row
+        onPress={() => router.push("/memory")}
+        leading={<Icon icon={BookmarkCheck} size={20} tone="muted" />}
+        title="What Finlyt remembers"
+        subtitle="Your income, monthly commitments and notes"
+      />
+      <Row
+        onPress={() => {
+          setRound((r) => r + 1);
+          setPicking(true);
+        }}
+        leading={<Icon icon={CalendarClock} size={20} tone="muted" />}
+        title={`Check-in every ${WEEKDAYS[checkIn.weekday]}`}
+        subtitle={`${formatClock(checkIn)} · tap to change`}
+      />
+    </View>
+  );
+  const picker = (
+    <TimePickerSheet
+      key={round}
+      visible={picking}
+      initial={checkIn}
+      initialWeekday={checkIn.weekday}
+      onClose={() => setPicking(false)}
+      onDone={(time, weekday) => void changeCheckIn(time, weekday)}
+    />
+  );
   const footer = (
     <View className="px-5 pb-3 pt-2">
       <Button
@@ -75,7 +111,7 @@ export default function PlanOverview() {
   if (!st || (!st.plan && !st.budget_paise)) {
     return (
       <View className="flex-1 bg-bg">
-        <View className="flex-1 justify-center px-8">
+        <ScrollView contentContainerClassName="px-8 pb-8 pt-10">
           <Animated.View entering={appear(0)}>
             <Coin size={64} variant="bare" />
           </Animated.View>
@@ -91,8 +127,12 @@ export default function PlanOverview() {
                 : `Tell Finlyt your budget for the month and what's coming up. You'll get limits that fit how you spend, and a short check-in every ${WEEKDAYS[checkIn.weekday]}.`}
             </Txt>
           </Animated.View>
-        </View>
+          <Animated.View entering={appear(3)} className="mt-8">
+            {links}
+          </Animated.View>
+        </ScrollView>
         {footer}
+        {picker}
       </View>
     );
   }
@@ -204,30 +244,8 @@ export default function PlanOverview() {
         ) : null}
 
         <Animated.View entering={appear(3)}>
-          <SectionLabel className="mb-1 mt-8">Check-in</SectionLabel>
-          <View className="-mx-3">
-            <Row
-              onPress={() => router.push("/report")}
-              leading={<Icon icon={ChartColumn} size={20} tone="muted" />}
-              title={`${month} report`}
-              subtitle="Where your money went, and how it compares"
-            />
-            <Row
-              onPress={() => router.push("/memory")}
-              leading={<Icon icon={BookmarkCheck} size={20} tone="muted" />}
-              title="What Finlyt remembers"
-              subtitle="Your income, monthly commitments and notes"
-            />
-            <Row
-              onPress={() => {
-                setRound((r) => r + 1);
-                setPicking(true);
-              }}
-              leading={<Icon icon={CalendarClock} size={20} tone="muted" />}
-              title={`Every ${WEEKDAYS[checkIn.weekday]}`}
-              subtitle={`${formatClock(checkIn)} · tap to change`}
-            />
-          </View>
+          <SectionLabel className="mb-1 mt-8">More</SectionLabel>
+          {links}
           {st.plan?.notes ? (
             <Txt tone="muted" className="mt-3 text-sm leading-5">
               Last check-in: {st.plan.notes}
@@ -236,14 +254,7 @@ export default function PlanOverview() {
         </Animated.View>
       </ScrollView>
       {footer}
-      <TimePickerSheet
-        key={round}
-        visible={picking}
-        initial={checkIn}
-        initialWeekday={checkIn.weekday}
-        onClose={() => setPicking(false)}
-        onDone={(time, weekday) => void changeCheckIn(time, weekday)}
-      />
+      {picker}
     </View>
   );
 }

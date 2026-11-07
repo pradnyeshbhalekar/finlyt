@@ -73,6 +73,8 @@ export function useRefreshMoney() {
       queryClient.invalidateQueries({ queryKey: ["txns"] }),
       queryClient.invalidateQueries({ queryKey: ["activity"] }),
       queryClient.invalidateQueries({ queryKey: ["balances"] }),
+      queryClient.invalidateQueries({ queryKey: ["report"] }),
+      queryClient.invalidateQueries({ queryKey: ["memory"] }),
     ]);
 }
 

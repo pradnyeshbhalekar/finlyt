@@ -2,7 +2,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import Constants from "expo-constants";
 import { router } from "expo-router";
 import * as Clipboard from "expo-clipboard";
-import { Bell, BookmarkCheck, CalendarClock, Download, LogOut, Pencil, Plug, Sparkles, Undo2 } from "lucide-react-native";
+import { Bell, BookmarkCheck, CalendarClock, ChartColumn, Download, LogOut, Pencil, Plug, Sparkles, Undo2 } from "lucide-react-native";
 import { useEffect, useState } from "react";
 import { Alert, ScrollView, useWindowDimensions, View } from "react-native";
 
@@ -109,6 +109,45 @@ export default function Settings() {
       <SectionLabel className="mb-3 mt-10">Appearance</SectionLabel>
       <Segmented options={THEMES} value={prefs.theme} onChange={(theme) => prefs.update({ theme })} />
 
+      <SectionLabel className="mb-1 mt-10">Your money</SectionLabel>
+      <View className="-mx-3">
+        <Row
+          onPress={() => router.push("/report")}
+          leading={<Icon icon={ChartColumn} size={20} tone="muted" />}
+          title="This month's report"
+          subtitle="Where your money went, and how it compares"
+        />
+        <Row
+          onPress={() => router.push("/memory")}
+          leading={<Icon icon={BookmarkCheck} size={20} tone="muted" />}
+          title="What Finlyt remembers"
+          subtitle="Income, monthly commitments and notes it uses"
+        />
+        <Row
+          onPress={() => router.push("/import")}
+          leading={<Icon icon={Download} size={20} tone="muted" />}
+          title="Import from an AI chat"
+          subtitle="Bring in spending you tracked in Claude, ChatGPT or Gemini"
+        />
+        {(imports.data?.items ?? []).map((b) => {
+          const span = b.first_day
+            ? `${new Date(`${b.first_day}T00:00:00`).toLocaleDateString("en-IN", { day: "numeric", month: "short" })} to ${new Date(
+                `${b.last_day}T00:00:00`,
+              ).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}`
+            : null;
+          const what = `${b.entry_count} ${b.entry_count === 1 ? "entry" : "entries"} from ${b.source_name}`;
+          return (
+            <Row
+              key={b.id}
+              onPress={() => confirmUndo(b.id, what)}
+              leading={<Icon icon={Undo2} size={20} tone="muted" />}
+              title={what}
+              subtitle={[span, "tap to undo"].filter(Boolean).join(" · ")}
+            />
+          );
+        })}
+      </View>
+
       <SectionLabel className="mb-1 mt-10">Logging</SectionLabel>
       <SwitchRow
         title="Check before saving"
@@ -172,44 +211,11 @@ export default function Settings() {
         }}
       />
 
-      <SectionLabel className="mb-1 mt-10">Import</SectionLabel>
-      <View className="-mx-3">
-        <Row
-          onPress={() => router.push("/import")}
-          leading={<Icon icon={Download} size={20} tone="muted" />}
-          title="Import from an AI chat"
-          subtitle="Bring in spending you tracked in Claude, ChatGPT or Gemini"
-        />
-        {(imports.data?.items ?? []).map((b) => {
-          const span = b.first_day
-            ? `${new Date(`${b.first_day}T00:00:00`).toLocaleDateString("en-IN", { day: "numeric", month: "short" })} to ${new Date(
-                `${b.last_day}T00:00:00`,
-              ).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}`
-            : null;
-          const what = `${b.entry_count} ${b.entry_count === 1 ? "entry" : "entries"} from ${b.source_name}`;
-          return (
-            <Row
-              key={b.id}
-              onPress={() => confirmUndo(b.id, what)}
-              leading={<Icon icon={Undo2} size={20} tone="muted" />}
-              title={what}
-              subtitle={[span, "tap to undo"].filter(Boolean).join(" · ")}
-            />
-          );
-        })}
-      </View>
-
       <SectionLabel className="mb-3 mt-10">Home screen widgets</SectionLabel>
       <WidgetGallery width={width - 40} />
 
       <SectionLabel className="mb-1 mt-10">AI assistants</SectionLabel>
       <View className="-mx-3">
-        <Row
-          onPress={() => router.push("/memory")}
-          leading={<Icon icon={BookmarkCheck} size={20} tone="muted" />}
-          title="What Finlyt remembers"
-          subtitle="Income, monthly commitments and notes it uses"
-        />
         <Row
           onPress={() => void connectAssistant()}
           leading={<Icon icon={Plug} size={20} tone="muted" />}

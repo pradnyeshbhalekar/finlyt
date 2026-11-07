@@ -10,6 +10,7 @@ import { Coin, HeaderLogo, type Mood } from "@/components/brand";
 import { Composer } from "@/components/composer";
 import { ExpenseRow } from "@/components/expense-row";
 import { KeyboardAware } from "@/components/keyboard";
+import { MonthGlance } from "@/components/month-glance";
 import { PlanStrip } from "@/components/plan-strip";
 import { ProposalCard } from "@/components/proposal-card";
 import { useTabBarHeight } from "@/components/tab-bar";
@@ -243,6 +244,7 @@ export default function Home() {
 
   function refresh() {
     void Promise.all([day.refetch(), month.refetch(), todays.refetch(), meta.refetch(), plan.refetch()]);
+    void refreshMoney(); // the month card and the rest
     if (smsAllowed && filters) void syncSms(filters).finally(() => txns.refetch());
     else void txns.refetch();
   }
@@ -306,6 +308,7 @@ export default function Home() {
           </View>
 
           <PlanStrip status={plan.data} />
+          <MonthGlance />
 
           {busy ? (
             <View className="mt-6 flex-row items-center gap-3 rounded-3xl bg-surface p-4">

@@ -57,11 +57,11 @@ async function copy(text: string) {
 }
 
 const SUGGESTIONS = [
-  "Where did my money go this week?",
-  "How much on food this month?",
+  "Where did my money go this month?",
+  "Am I saving enough?",
+  "Remember my salary and monthly commitments",
   "Who owes me money?",
   "Kal kitna kharcha hua?",
-  "What were my biggest spends in October?",
 ];
 
 export default function Ask() {
@@ -228,7 +228,8 @@ export default function Ask() {
                 Ask about your money
               </Txt>
               <Txt tone="muted" className="mt-2 text-base leading-6">
-                Anything, any day. Finlyt looks it up in what you&apos;ve logged.
+                Anything, any day. Finlyt looks it up in what you&apos;ve logged, shows a report for a month, and
+                remembers your income and monthly commitments.
               </Txt>
             </Animated.View>
             <View className="mt-6 gap-2">

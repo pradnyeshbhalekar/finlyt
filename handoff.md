@@ -148,6 +148,14 @@ The user wants to stay free. Gemini stays primary; **Groq is the fallback** (`fi
 - **Not yet active:** the user hasn't made a Groq key. When they do: put it in the root `.env` → copy to `backend/.env` → `printf %s "$KEY" | npx vercel@65.11.0 env add GROQ_API_KEY production --force --sensitive` → deploy (ask first). Then run the casual-input smoke test against Groq alone to check its Hinglish accuracy.
 - Free-tier notes (Nov 2026; Google no longer publishes numbers, so check AI Studio): Flash-Lite about 500 requests/day; Flash varies. Groq `gpt-oss-120b` about 1,000 requests/day and 200k tokens/day (about 80 Finlyt calls).
 
+## Making the new features findable (2026-11-07, after the deploy)
+
+The user said they could only see Import from AI. Nothing was missing; it was all out of sight:
+- The Plan tab without a saved plan shows only "No plan yet", which hid the report, memory and check-in rows. They're now one `links` block shown in both states (and the time picker is one `picker`).
+- Home only had a small "₹X this month" text link. Now `components/month-glance.tsx` is a "November so far" card under the plan strip: the total, last month at the same point, the top 3 categories with usual ticks, "See where it went" (→ /report), and "Add your income and monthly commitments" (→ /memory) until income is known. `useRefreshMoney` also refreshes `report` and `memory`, and Home's pull-to-refresh calls it.
+- Settings has a "Your money" section right after Appearance: This month's report, What Finlyt remembers, Import from an AI chat, and past imports.
+- Ask's suggestions now start with "Where did my money go this month?", "Am I saving enough?" and "Remember my salary and monthly commitments".
+
 ## Month reports ("where did my money go") and money memory (2026-11-07) — DEPLOYED, ON THE PHONE
 
 The user wants Ask to work like Claude's leaked "Personal Finance": ask "Where did my money go this month?" and get a full dashboard, then follow up with "Is that more than usual?" or "Anything else I'm missing?". It should also answer "am I spending more than I earn / how much should I save". While this was being built they added memory: a fixed monthly payment to family (paying off something they bought) that steps up once their salary passes a threshold. Finlyt should remember that, change the amount when the salary changes, and say how saving should grow with a raise. (The user's real figures are kept out of this public repo; tests and examples use a made-up "₹3,000 a month to a sister for a ₹24,000 laptop, ₹6,000 once salary is ₹55,000".)
