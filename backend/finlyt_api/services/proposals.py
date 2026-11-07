@@ -16,7 +16,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from ..errors import ApiError
-from ..gemini import GExpense, GOwe, GProposal, GRepay, GSettlement, GTxnNote
+from ..gemini import GExpense, GOwe, GPayment, GProposal, GRepay, GSettlement, GTxnNote
 from ..models import Account, BankTxn, Category, Debt, Person
 from ..money import rupees, to_paise
 from ..schemas import LogCommitIn
@@ -53,7 +53,13 @@ and help pick the category.
 
 How to fill the answer:
 - expenses: one per thing I bought or paid for. Don't merge separate items, skip small ones or \
-invent anything I didn't say. If something has no amount, leave it out and ask about it.
+invent anything I didn't say.
+- No amount in what I said? A bank transaction may already have it. If I picked one \
+transaction to explain (it's the only one listed), its amount is the amount: one expense paid by \
+it (or split across the things I name, if I give amounts for some). If I picked none and one \
+waiting transaction fits (its payee matches the place I name, or it's the only recent debit), \
+use it. Only if nothing fits, leave the item out and ask; when several could fit, ask which one, \
+naming them by amount and time ("Was it the ₹60 at 10:05 or the ₹240 at 9:30?"), not "how much?".
 - description: short and natural, like a receipt line: "Lunch at Zomato", "Auto", "Chai", \
 "Groceries at DMart". Title case for names.
 - payments: how each expense was paid. source is a transaction label (T1, T2…) when the money \
@@ -182,6 +188,36 @@ def build_prompt(ctx: LogContext, *, text: str | None, has_audio: bool, now: dat
     if text:
         lines.append(f"What I typed:\n{text}")
     return "\n".join(lines)
+
+
+def use_picked_txn(ctx: LogContext, g: GProposal, text: str | None) -> GProposal:
+    """The note explains one picked bank transaction but the model still asked for an amount
+    ("What was the amount for the ice cream?"): the transaction has it, so use it."""
+    if len(ctx.txns) != 1 or not text or not text.strip():
+        return g
+    txn = ctx.txns[0]
+    if txn.direction != "debit" or g.expenses or g.settlements or g.transfers or g.ignored or g.i_owe or g.repaid:
+        return g
+    if re.search(r"\d", text):
+        return g  # I gave a number: the question is about something else
+    rupee_amount = txn.amount_paise / 100
+    description = " ".join(text.strip().split())[:80]
+    expense = GExpense(
+        description=description[:1].upper() + description[1:],
+        category=_guess_category(ctx, text),
+        time=txn.occurred_at.astimezone(IST).strftime("%Y-%m-%d %H:%M"),
+        total=rupee_amount,
+        my_share=rupee_amount,
+        payments=[GPayment(source="T1", amount=rupee_amount)],
+        owed_by=[],
+    )
+    return g.model_copy(update={"expenses": [expense], "questions": []})
+
+
+def _guess_category(ctx: LogContext, text: str) -> str:
+    from .quick_parse import category_for
+
+    return category_for(text, [c.name for c in ctx.categories]) or "Other"
 
 
 _LABEL = re.compile(r"^\s*T(\d+)\s*$", re.IGNORECASE)

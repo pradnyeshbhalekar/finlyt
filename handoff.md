@@ -148,6 +148,13 @@ The user wants to stay free. Gemini stays primary; **Groq is the fallback** (`fi
 - **Not yet active:** the user hasn't made a Groq key. When they do: put it in the root `.env` → copy to `backend/.env` → `printf %s "$KEY" | npx vercel@65.11.0 env add GROQ_API_KEY production --force --sensitive` → deploy (ask first). Then run the casual-input smoke test against Groq alone to check its Hinglish accuracy.
 - Free-tier notes (Nov 2026; Google no longer publishes numbers, so check AI Studio): Flash-Lite about 500 requests/day; Flash varies. Groq `gpt-oss-120b` about 1,000 requests/day and 200k tokens/day (about 80 Finlyt calls).
 
+## Logging asked "what was the amount?" though a payment had it; bottom bar without the pill (2026-11-07, ~10:45)
+
+- The user logged "ice cream from the medical shop" and got "What was the amount for the ice cream?", although the price was in their bank payment. I couldn't reproduce it locally (flash-lite linked the payment every time: tapped, untapped, and with a phone-number UPI payee). The prompt said "If something has no amount, leave it out and ask". Now: a picked transaction's amount is the amount; with none picked, use a fitting waiting one (payee matches the place, or the only recent debit); if several could fit, ask *which* by amount and time, never "how much?".
+- Safety net, `proposals.use_picked_txn` (called in `routes/log.propose`): exactly one picked debit, a note with no digits, and a model answer with no entries at all → one expense for the whole payment. The description comes from the note, and the category from `quick_parse.category_for` (it prefers what was bought over `PLACE_WORDS` like medical, so ice cream is Food). Tests in `tests/test_log.py`.
+- Bottom bar: the user said the pill looked bad. There's no pill now: the active icon (24, stroke 2.1) is `chart` blue and its label `accent`; the rest are grey.
+- **Needs:** a Vercel deploy for the logging fix (the user has to say "deploy"), and an install (the APK also has the import-gate fix).
+
 ## Fixes from driving the phone (2026-11-07, ~10:20)
 
 After a fresh install the user went through onboarding into Import (3 entries imported). Found by screenshots over adb:

@@ -98,6 +98,21 @@ CATEGORY_WORDS: dict[str, tuple[str, ...]] = {
 }  # fmt: skip
 CATEGORY_OF = {word: category for category, words in CATEGORY_WORDS.items() for word in words}
 
+# Shops rather than what was bought: "icecream from medical" is Food, not Health.
+PLACE_WORDS = {
+    "medical", "pharmacy", "chemist", "restaurant", "cafe", "canteen", "mess", "mall", "kirana",
+    "dmart", "blinkit", "zepto", "instamart", "bigbasket", "amazon", "flipkart", "apollo",
+}
+
+
+def category_for(text: str, category_names: list[str]) -> str | None:
+    """The category a note's words point to, preferring what was bought over where."""
+    allowed = {name.lower(): name for name in category_names}
+    words = re.findall(r"[a-z]+", text.lower().replace("ice cream", "icecream"))
+    known = [w for w in words if w in CATEGORY_OF and CATEGORY_OF[w].lower() in allowed]
+    pick = next((w for w in known if w not in PLACE_WORDS), known[0] if known else None)
+    return allowed[CATEGORY_OF[pick].lower()] if pick else None
+
 BRANDS = {
     "dmart": "DMart", "zomato": "Zomato", "swiggy": "Swiggy", "uber": "Uber", "ola": "Ola",
     "rapido": "Rapido", "blinkit": "Blinkit", "zepto": "Zepto", "instamart": "Instamart",

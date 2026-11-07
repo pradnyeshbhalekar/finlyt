@@ -1,6 +1,6 @@
-// The bottom bar for Home, Ask, Plan and History, Material style. The active tab is coloured like
-// the logo: a white icon on a Finlyt-blue pill (the Ask sparkle takes the logo's light-blue ring
-// colour), with its label in blue. It's drawn here (not the default) to follow the themes and fonts.
+// The bottom bar for Home, Ask, Plan and History. No pill (the user found it looked bad): the
+// active tab's icon and label are Finlyt blue and slightly bolder, the rest grey. It's drawn here
+// (not the library's default) to follow the themes and fonts.
 import type { BottomTabBarProps } from "expo-router/js-tabs";
 import { History, House, Target } from "lucide-react-native";
 import { Pressable, View } from "react-native";
@@ -8,7 +8,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AskIcon } from "@/components/ask-icon";
 import { Txt, type IconType } from "@/components/ui";
-import { BRAND, TINT, useTheme, WHITE } from "@/lib/theme";
+import { useTheme } from "@/lib/theme";
 
 const BAR_HEIGHT = 64;
 
@@ -53,15 +53,8 @@ export function TabBar({ state, emitter, navigateToTab }: BottomTabBarProps) {
             accessibilityLabel={tab.label}
             className="flex-1 items-center justify-center gap-1"
           >
-            <View
-              className="h-8 w-16 items-center justify-center rounded-full"
-              style={focused ? { backgroundColor: BRAND } : undefined}
-            >
-              {TabIcon === AskIcon ? (
-                <AskIcon size={22} color={focused ? WHITE : colors.muted} strokeWidth={focused ? 2 : 1.75} sparkle={focused ? TINT : undefined} />
-              ) : (
-                <TabIcon size={22} color={focused ? WHITE : colors.muted} strokeWidth={focused ? 2 : 1.75} />
-              )}
+            <View className="h-8 items-center justify-center">
+              <TabIcon size={24} color={focused ? colors.chart : colors.muted} strokeWidth={focused ? 2.1 : 1.75} />
             </View>
             <Txt weight={focused ? "semibold" : "medium"} tone={focused ? "accent" : "muted"} className="text-xs">
               {tab.label}

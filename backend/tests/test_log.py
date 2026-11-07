@@ -349,3 +349,55 @@ def test_simple_text_skips_gemini(client, me):
     # Anything with people goes to Gemini (which isn't configured here).
     resp = client.post("/api/log/propose", json={"text": "lunch 450 with rahul, he owes 200"})
     assert resp.status_code == 503
+
+
+class AskingForAmount:
+    """A model that ignores the picked transaction and asks how much (seen on the phone)."""
+
+    def __call__(self, *, system, prompt, audio, audio_mime):
+        from finlyt_api.gemini import GProposal
+
+        self.prompt = prompt
+        return GProposal(transcript="", expenses=[], settlements=[], transfers=[], ignored=[],
+                         questions=["What was the amount for the ice cream?"]), "fake-flash"
+
+
+def test_a_picked_payment_gives_the_amount_when_the_note_has_none(client, me, app):
+    from datetime import datetime
+
+    from finlyt_api.models import BankTxn
+    from finlyt_api.timeutil import ensure_aware
+
+    with app.app_context():
+        s = app.extensions["finlyt.sessionmaker"]()
+        txn = BankTxn(user_id=me["user"]["id"], account_id=me["acc"]["Kotak"], direction="debit", amount_paise=6000,
+                      channel="upi", counterparty="9876500011@ybl", reference="555000111",
+                      occurred_at=ensure_aware(datetime(2026, 11, 7, 10, 5)))
+        s.add(txn)
+        s.commit()
+        txn_id = txn.id
+        s.close()
+    fake = AskingForAmount()
+    app.extensions["finlyt.gemini"] = fake
+    resp = client.post("/api/log/propose", json={"text": "icecream from medical", "txn_ids": [txn_id]})
+    assert resp.status_code == 200, resp.get_json()
+    p = resp.get_json()
+    assert p["questions"] == []
+    [e] = p["expenses"]
+    assert e["description"] == "Icecream from medical"
+    assert e["total_paise"] == 6000
+    assert e["category_id"] == me["cat"]["Food"]  # what was bought, not the shop
+    assert e["payments"][0]["bank_txn_id"] == txn_id
+    assert "its amount is the amount" in proposals_prompt()
+
+
+def proposals_prompt():
+    from finlyt_api.services.proposals import SYSTEM_PROMPT
+
+    return SYSTEM_PROMPT
+
+
+def test_with_nothing_picked_the_question_stays(client, me, app):
+    app.extensions["finlyt.gemini"] = AskingForAmount()
+    p = client.post("/api/log/propose", json={"text": "icecream from medical"}).get_json()
+    assert p["expenses"] == [] and p["questions"] == ["What was the amount for the ice cream?"]

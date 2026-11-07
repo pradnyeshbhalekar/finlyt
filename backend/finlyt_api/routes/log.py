@@ -76,6 +76,7 @@ def propose():
             audio=audio,
             audio_mime=mime,
         )
+    answer = proposals.use_picked_txn(ctx, answer, data.text)
     result = proposals.resolve(s, user_id, ctx, answer, now=now)
     result["model"] = model
     return result
