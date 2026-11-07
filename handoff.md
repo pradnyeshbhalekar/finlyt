@@ -148,6 +148,12 @@ The user wants to stay free. Gemini stays primary; **Groq is the fallback** (`fi
 - **Not yet active:** the user hasn't made a Groq key. When they do: put it in the root `.env` → copy to `backend/.env` → `printf %s "$KEY" | npx vercel@65.11.0 env add GROQ_API_KEY production --force --sensitive` → deploy (ask first). Then run the casual-input smoke test against Groq alone to check its Hinglish accuracy.
 - Free-tier notes (Nov 2026; Google no longer publishes numbers, so check AI Studio): Flash-Lite about 500 requests/day; Flash varies. Groq `gpt-oss-120b` about 1,000 requests/day and 200k tokens/day (about 80 Finlyt calls).
 
+## Stable APK 0.2.0, on the website (2026-11-07, ~20:00)
+
+- `app.json`: version 0.2.0, android.versionCode 2 (prebuild again). Built `assembleRelease -PreactNativeArchitectures=arm64-v8a,armeabi-v7a` (~12 min, 57 MB) and copied to `mobile/release/Finlyt-0.2.0.apk` (git ignores `*.apk`). Still signed with the template's debug keystore (SHA-1 5E:8F:…:F6:25), so it installs over the phone's build and Google sign-in keeps working. A real release keystore would need its SHA-1 added as another Android OAuth client, and a reinstall.
+- Website (`~/Developer/finlyt-web`, Vite + React, Render): the APK is at `public/downloads/finlyt-latest.apk` (what `APP.apkUrl` points at), and `src/config.js` has version 0.2.0, 57 MB and Android 7.0+ (minSdk 24, not 8.0). Pushed `f780f6d` (GitHub warns about files over 50 MB; the limit is 100 MB). Live: https://finlyt.onrender.com/downloads/finlyt-latest.apk serves 59,487,711 bytes. For the next version, overwrite the APK and update `config.js`; Git LFS or a GitHub release would stop the repo growing ~57 MB a version.
+- Only Google OAuth test users can sign in (the consent screen is in Testing mode), even though anyone can download it.
+
 ## The launch screen follows the app's theme (2026-11-07, ~14:00)
 
 The user: "the splash screen should be the same as the theme currently being used". The animated intro (`components/splash.tsx`) already used `colors.bg`; the mismatch was Android's own launch screen, fixed at build time: light `#FAFAF9`, or on a dark phone navy `#0B1033` (Ink's colour), while the user's Dark theme is black.
