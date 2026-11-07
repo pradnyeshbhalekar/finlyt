@@ -32,7 +32,7 @@
           "image": "./assets/images/splash-icon-light.png",
           "imageWidth": 96,
           "dark": {
-            "backgroundColor": "#0B1033",
+            "backgroundColor": "#000000",
             "image": "./assets/images/splash-icon-dark.png"
           }
         }
@@ -128,7 +128,8 @@
             }
           ]
         }
-      ]
+      ],
+      "./plugins/with-splash-themes.js"
     ],
     "experiments": {
       "typedRoutes": true,

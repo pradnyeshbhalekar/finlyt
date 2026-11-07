@@ -4,7 +4,7 @@
 import { router } from "expo-router";
 import { HandHeart, MessageSquareText, StickyNote, Trash2, Wallet } from "lucide-react-native";
 import { useState } from "react";
-import { ActivityIndicator, Alert, Pressable, ScrollView, TextInput, View } from "react-native";
+import { ActivityIndicator, Pressable, ScrollView, TextInput, View } from "react-native";
 
 import { Meter } from "@/components/charts";
 import { Button, Icon, IconButton, SectionLabel, Txt } from "@/components/ui";
@@ -12,6 +12,7 @@ import { formatPaise } from "@/lib/money";
 import { useChangeCommitment, useDeleteCommitment, useDeleteNote, useMemory, useSetIncome } from "@/lib/queries";
 import { fonts, useTheme } from "@/lib/theme";
 import type { Commitment } from "@/lib/types";
+import { confirmDelete as askDelete } from "@/lib/ask-sheet";
 
 function rulesText(c: Commitment): string | null {
   if (!c.rules.length) return null;
@@ -44,10 +45,7 @@ export default function Memory() {
   }
 
   function confirmDelete(c: Commitment) {
-    Alert.alert(`Forget “${c.title}”?`, "Finlyt stops setting it aside in your check-ins.", [
-      { text: "Cancel", style: "cancel" },
-      { text: "Forget", style: "destructive", onPress: () => removeCommitment.mutate(c.id) },
-    ]);
+    askDelete(`Forget “${c.title}”?`, "Finlyt stops setting it aside in your check-ins.", () => removeCommitment.mutate(c.id), "Forget it");
   }
 
   if (memory.isPending) {

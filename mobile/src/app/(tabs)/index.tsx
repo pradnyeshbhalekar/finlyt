@@ -3,7 +3,7 @@
 import { router, useLocalSearchParams } from "expo-router";
 import { ChevronRight, CircleAlert, Undo2 } from "lucide-react-native";
 import { useEffect, useState } from "react";
-import { Alert, AppState, Pressable, RefreshControl, ScrollView, View } from "react-native";
+import { AppState, Pressable, RefreshControl, ScrollView, View } from "react-native";
 
 import { AvatarButton } from "@/components/avatar";
 import { Coin, HeaderLogo, type Mood } from "@/components/brand";
@@ -15,7 +15,7 @@ import { ProposalCard } from "@/components/proposal-card";
 import { useTabBarHeight } from "@/components/tab-bar";
 import { SmsPermissionCard, ToLog } from "@/components/to-log";
 import { Icon, Screen, SectionLabel, Txt } from "@/components/ui";
-import { isoDate, startOfMonth } from "@/lib/dates";
+import { isoDate, moveToDay, startOfMonth } from "@/lib/dates";
 import {
   entryCount,
   hasIssues,
@@ -47,6 +47,7 @@ import { taps } from "@/lib/motion";
 import { refreshWidgets, scheduleWidgetRefresh } from "@/widgets/refresh";
 import { useTheme } from "@/lib/theme";
 import type { Expense, Proposal } from "@/lib/types";
+import { confirmDelete as askDelete } from "@/lib/ask-sheet";
 
 const EXAMPLES = [
   "lunch 450 with Rahul, he owes 200",
@@ -225,10 +226,9 @@ export default function Home() {
   }
 
   function confirmDelete(expense: Expense) {
-    Alert.alert("Delete this entry?", `${expense.description} · ${formatPaise(expense.my_share_paise)}`, [
-      { text: "Cancel", style: "cancel" },
-      { text: "Delete", style: "destructive", onPress: () => remove.mutate(expense.id) },
-    ]);
+    askDelete("Delete this entry?", `${expense.description} · ${formatPaise(expense.my_share_paise)}`, () =>
+      remove.mutate(expense.id),
+    );
   }
 
   function refresh() {
@@ -287,6 +287,17 @@ export default function Home() {
                 onSave={() => void savePending()}
                 onEdit={() => router.push("/log/review")}
                 onDiscard={logDraft.discard}
+                onMoveDay={(dayIso) =>
+                  logDraft.hold({
+                    ...pending,
+                    proposal: {
+                      ...pending.proposal,
+                      expenses: pending.proposal.expenses.map((e) =>
+                        e.payments.some((p) => p.bank_txn_id) ? e : { ...e, occurred_at: moveToDay(e.occurred_at, dayIso) },
+                      ),
+                    },
+                  })
+                }
               />
             </View>
           ) : null}

@@ -32,24 +32,6 @@ type Message = {
   memory_updates?: MemoryUpdate[];
 };
 
-// What each data tool reads, for the "Looked at" line under an answer.
-const LOOKED_AT: Record<string, string> = {
-  spending_summary: "spending",
-  find_expenses: "expenses",
-  people_balances: "people",
-  budget_status: "budget",
-  bank_payments: "bank payments",
-  recent_activity: "activity",
-  categories_and_accounts: "categories",
-  month_report: "the month",
-  money_in_and_out: "money in and out",
-};
-
-function lookedAt(tools: string[] | undefined): string | null {
-  const labels = [...new Set((tools ?? []).map((t) => LOOKED_AT[t] ?? t.replace(/_/g, " ")))];
-  return labels.length ? `Looked at: ${labels.join(", ")}` : null;
-}
-
 async function copy(text: string) {
   await Clipboard.setStringAsync(text);
   // Android 13 and later show their own "Copied" confirmation.
@@ -254,46 +236,35 @@ export default function Ask() {
                 key={i}
                 onLongPress={() => void copy(m.text)}
                 accessibilityHint="Long-press to copy"
-                className="mb-3 self-end rounded-3xl rounded-br-md px-4 py-3"
-                style={{ backgroundColor: BRAND, maxWidth: "82%" }}
+                className="mb-5 self-end rounded-3xl rounded-br-lg bg-surface px-4 py-3"
+                style={{ maxWidth: "85%" }}
               >
-                <Txt tone="onBrand" className="text-base" style={{ lineHeight: 23 }}>
+                <Txt className="text-base" style={{ lineHeight: 23 }}>
                   {m.text}
                 </Txt>
               </Pressable>
             );
           }
-          const looked = lookedAt(m.tools_used);
           return (
-            <View key={i} className="mb-3">
-              <View className="flex-row items-end gap-2 pr-8">
-                <Coin size={28} variant="bare" />
-                <Pressable
-                  onLongPress={() => void copy(m.text)}
-                  accessibilityHint="Long-press to copy"
-                  className="rounded-3xl rounded-bl-md bg-surface px-4 py-3"
-                >
-                  <Txt className="text-base" style={{ lineHeight: 23 }}>
-                    {m.text}
-                  </Txt>
-                </Pressable>
-              </View>
-              {looked ? (
-                <Txt tone="faint" className="mb-1 ml-9 mt-1 text-xs">
-                  {looked}
+            <View key={i} className="mb-5">
+              <Pressable onLongPress={() => void copy(m.text)} accessibilityHint="Long-press to copy" className="pr-2">
+                <Txt className="text-base" style={{ lineHeight: 25 }}>
+                  {m.text}
                 </Txt>
+              </Pressable>
+              {m.memory_updates?.length || m.report ? (
+                <View className="mt-3">
+                  <MemoryUpdates updates={m.memory_updates} inset={false} />
+                  {m.report ? <ReportCard report={m.report} /> : null}
+                </View>
               ) : null}
-              <View className="mt-2">
-                <MemoryUpdates updates={m.memory_updates} />
-                {m.report ? <ReportCard report={m.report} /> : null}
-              </View>
             </View>
           );
         })}
         {/* After a report: follow-up questions to tap. */}
         {!busy && messages.at(-1)?.role === "finlyt" && !messages.at(-1)?.options?.length
           ? (messages.at(-1)?.followups ?? []).length > 0 && (
-              <View className="mb-3 ml-9 flex-row flex-wrap gap-2">
+              <View className="mb-4 flex-row flex-wrap gap-2">
                 {(messages.at(-1)?.followups ?? []).map((q) => (
                   <Pressable
                     key={q}
@@ -313,14 +284,15 @@ export default function Ask() {
             options={messages.at(-1)?.options ?? []}
             onPick={(answer) => void send(answer)}
             onOther={() => inputRef.current?.focus()}
+            inset={false}
           />
         ) : null}
         {ask.isPending ? (
-          <View className="mb-3 flex-row items-end gap-2">
-            <Coin size={28} variant="bare" mood="thinking" />
-            <View className="rounded-3xl rounded-bl-md bg-surface px-4 py-3">
-              <ActivityIndicator color={colors.muted} />
-            </View>
+          <View className="mb-4 flex-row items-center gap-2.5">
+            <Coin size={24} variant="bare" mood="thinking" />
+            <Txt tone="muted" className="text-sm">
+              Looking into it…
+            </Txt>
           </View>
         ) : null}
         {error ? (

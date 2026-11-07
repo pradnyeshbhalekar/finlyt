@@ -70,6 +70,8 @@ take-home income (and any change to it), remember_commitment for money I've prom
 (with the total if it's paying something off, what's already paid, and income rules like "₹6,000 \
 once my salary is ₹55,000"), remember_note for anything else useful later. Then say in a few \
 words what you saved and what it changes.
+- When I say I want to save up for something, call save_goal. My goals are in memory below: say \
+how I'm doing against them, and what a month it takes to reach them, when it helps.
 - Don't save one-off spends; those are logged on Home.
 """
 
@@ -166,12 +168,58 @@ MEMORY_TOOLS = [
         run=lambda s, user_id, args: {},
     ),
     insights.Tool(
+        name="save_goal",
+        description=(
+            "Start a savings goal, or change the one with the same name: what it's for, how much, and by when. "
+            "E.g. ₹15,000 for a Goa trip by December."
+        ),
+        input_schema={
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "description": "Short, e.g. 'Goa trip'"},
+                "target_rupees": {"type": "number"},
+                "by_date": {"type": "string", "description": "YYYY-MM-DD, or leave out"},
+            },
+            "required": ["name", "target_rupees"],
+        },
+        run=lambda s, user_id, args: {},
+    ),
+    insights.Tool(
         name="remember_note",
         description="Remember something else useful about my money for later.",
         input_schema={"type": "object", "properties": {"text": {"type": "string"}}, "required": ["text"]},
         run=lambda s, user_id, args: {},
     ),
 ]
+
+def _save_goal(s, user_id: int, args: dict) -> dict:
+    from datetime import date
+
+    from ..money import rupees
+    from ..services import goals
+
+    name = str(args.get("name") or "").strip()[:80] or "Savings"
+    target = to_paise(args.get("target_rupees") or 0)
+    if target <= 0:
+        return {"kind": "note", "text": "A goal needs an amount"}
+    due = None
+    if args.get("by_date"):
+        try:
+            due = date.fromisoformat(str(args["by_date"])[:10])
+        except ValueError:
+            due = None
+    g = goals.find_goal(s, user_id, name)
+    if g is None:
+        g = goals.create_goal(s, user_id, name, target, due)
+        verb = "Started a goal"
+    else:
+        g.target_paise, verb = target, "Updated the goal"
+        if due:
+            g.due_on = due
+        s.flush()
+    when = f" by {g.due_on.strftime('%d %b')}" if g.due_on else ""
+    return {"kind": "note", "text": f"{verb}: {g.name}, {rupees(g.target_paise)}{when}"}
+
 
 FOLLOWUPS = ["Is that more than usual?", "Anything else I'm missing?", "How much should I save?"]
 
@@ -227,6 +275,10 @@ def _answer(s, user_id: int, messages: list[tuple[str, str]]) -> tuple[str, str,
             if update:
                 got.remember([update])
             return {"saved": update.text if update else "Nothing changed"}
+        if name == "save_goal":
+            update = _save_goal(s, user_id, args)
+            got.remember([update])
+            return {"saved": update["text"]}
         if name == "remember_note":
             update = memory.add_note(s, user_id, str(args.get("text") or ""))
             got.remember([update])

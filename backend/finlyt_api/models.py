@@ -480,3 +480,34 @@ class MoneyNote(Base):
     user_id: Mapped[int] = _owner()
     text: Mapped[str] = mapped_column(String(300))
     created_at: Mapped[datetime] = _created()
+
+
+class Goal(Base):
+    """Something I'm saving up for: a name, a target and maybe a date. What's saved is the sum of
+    its deposits (money I put towards it, or took back out)."""
+
+    __tablename__ = "goals"
+    __table_args__ = (CheckConstraint("target_paise > 0", name="target_positive"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = _owner()
+    name: Mapped[str] = mapped_column(String(80))
+    target_paise: Mapped[int] = mapped_column(BigInteger)
+    due_on: Mapped[date | None] = mapped_column(Date)
+    archived: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    created_at: Mapped[datetime] = _created()
+
+    deposits: Mapped[list[GoalDeposit]] = relationship(
+        order_by="GoalDeposit.id", cascade="all, delete-orphan", passive_deletes=True
+    )
+
+
+class GoalDeposit(Base):
+    __tablename__ = "goal_deposits"
+    __table_args__ = (CheckConstraint("amount_paise <> 0", name="amount_nonzero"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    goal_id: Mapped[int] = mapped_column(ForeignKey("goals.id", ondelete="CASCADE"), index=True)
+    amount_paise: Mapped[int] = mapped_column(BigInteger)  # negative when taken back out
+    note: Mapped[str | None] = mapped_column(String(120))
+    created_at: Mapped[datetime] = _created()

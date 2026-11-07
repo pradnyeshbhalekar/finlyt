@@ -148,6 +148,40 @@ The user wants to stay free. Gemini stays primary; **Groq is the fallback** (`fi
 - **Not yet active:** the user hasn't made a Groq key. When they do: put it in the root `.env` → copy to `backend/.env` → `printf %s "$KEY" | npx vercel@65.11.0 env add GROQ_API_KEY production --force --sensitive` → deploy (ask first). Then run the casual-input smoke test against Groq alone to check its Hinglish accuracy.
 - Free-tier notes (Nov 2026; Google no longer publishes numbers, so check AI Studio): Flash-Lite about 500 requests/day; Flash varies. Groq `gpt-oss-120b` about 1,000 requests/day and 200k tokens/day (about 80 Finlyt calls).
 
+## The launch screen follows the app's theme (2026-11-07, ~14:00)
+
+The user: "the splash screen should be the same as the theme currently being used". The animated intro (`components/splash.tsx`) already used `colors.bg`; the mismatch was Android's own launch screen, fixed at build time: light `#FAFAF9`, or on a dark phone navy `#0B1033` (Ink's colour), while the user's Dark theme is black.
+- `plugins/with-splash-themes.js` (in app.json plugins): colours `splash_light/dark/ink` and styles `Theme.App.SplashScreen.Light/.Dark/.Ink` (parent `Theme.App.SplashScreen`, only `windowSplashScreenBackground` changed).
+- `modules/splash-theme` (local Expo module, Kotlin): `SplashTheme.set("Light"|"Dark"|"Ink"|"Default")` → `activity.splashScreen.setSplashScreenTheme(id)` on Android 13+, which Android remembers for later launches. "Default" (the Auto theme) goes back to the base style, which follows the phone.
+- `_layout.tsx` `Themed`: an effect calls it whenever the theme mode or resolved theme changes. The new theme shows from the next cold start.
+- The base dark launch colour is now black (`expo-splash-screen` dark backgroundColor `#000000`), since Auto on a dark phone is the Dark theme.
+- This needed `npx expo prebuild --platform android` (it cleared and recreated android/). The template's debug keystore is fixed, so the signing SHA-1 (and Google sign-in) stay the same; it was checked in the build log.
+
+## Our own confirm sheets; savings goals (2026-11-07, ~13:50) — NOT DEPLOYED
+
+- **No Android dialogs:** `lib/ask-sheet.ts` (`askSheet({title, message, actions})`, `confirmDelete(title, message, onConfirm, label)`) plus a single `<AskSheetHost />` in the root layout: a bottom sheet (trash icon for deletes, full-width buttons, red for destructive, Cancel). All 8 `Alert.alert`s were replaced (entry delete on Home, History and the entry screen; duplicates; undo import; forget commitment; delete chat; the To log actions). Files with a local `confirmDelete` import it as `askDelete`.
+- **Savings goals** (migration `a6d1f4c8e2b0`, checked locally, not on Neon): `goals` (name, target, due_on, archived) and `goal_deposits` (± amount, note). `services/goals.py`: saved = Σ deposits (can't go below 0), left, progress, `months_until` (this month counts), `monthly_needed` (rounded up to ₹10), saved this month. Routes `/api/goals` (GET/POST), `/api/goals/<id>` (GET/PATCH/DELETE; `due_on: null` clears it), `/api/goals/<id>/deposits`. Goals go into `memory.context` ("Saving for Goa trip: ₹0 of ₹15,000, by 20 Dec 2026, about ₹7,500 a month"), so Ask and the check-in see them. Ask's `save_goal` tool creates or updates one by name. 148 tests pass (4 in `test_goals.py`).
+- App: `app/goals.tsx` (cards with a meter, "New goal" → `components/goal-form.tsx` sheet: name, amount, month chips or "No date"; `?new=1` opens it), `app/goal/[id].tsx` (a Ring with saved of target, the `lib/goals.goalNote` line, Add money / Take out sheet with a note, the money in and out list, Change the goal, Delete via the confirm sheet). The Plan tab has a "Savings goals" card (each goal and New goal); Settings → Your money → Savings goals.
+- **Needs:** Neon migration + Vercel deploy (goals), then install.
+
+## Dates in History and To log (2026-11-07, ~13:35)
+
+- `dates.dayHeading` ("Today · 7 Nov", "Yesterday · 6 Nov", "Thu, 5 Nov") for the day headings in History, a category's entries, the Import preview and Possible duplicates. `dates.dateTimeLabel` ("Today, 10:13 pm", "Thu 5 Nov, 9:40 pm") for To log rows, which can be up to 14 days old.
+
+## The logo on every tab, no MCP in Settings, a tappable Plan (2026-11-07, ~13:25)
+
+- Tabs header (`(tabs)/_layout.tsx`): `headerTitle` is the logo (`components/tab-header.tsx` `TabLogo` = `HeaderLogo` 26, not the splash target), left-aligned, with `HeaderAvatar` on the right (opens Settings). Ask's own header buttons replace the avatar. Home keeps its own header.
+- Settings: "Connect Claude (MCP)" removed, along with `useConnectToken`. The backend `/api/mcp` and `/api/auth/connect-token` are still there.
+- `components/group.tsx`: `Group`, `GroupItem` (icon or `leading`, chevron when tappable, hairlines) and `GroupLabel`, shared by Settings and Plan.
+- Plan: Today is a tappable card (chevron) → a "Your limits" sheet (usual day, bigger days, spent today, "Change them with Finlyt" → /plan/chat). The tiles are tappable (the budget tile → /report; saved/over plan → a sheet explaining the buffer). Set-aside items are a grouped card → a sheet (amount, due, progress bar, "Change it in a check-in"). The More links are a grouped card with chevrons.
+
+## Cleaner Ask, Settings and answer options; logging on the right day (2026-11-07, ~13:10)
+
+- **Answers to tap** (`components/choices.tsx`, used by Ask and the check-in): plain rounded pills (no numbers, box or chevrons) and a quiet "Type my own". `inset` (default true) lines them up under the check-in's coin; Ask passes false.
+- **Ask**: Finlyt's replies are plain text (no bubble or coin), the user's messages soft `bg-surface` bubbles, and "Looking into it…" while waiting. The "Looked at: …" lines are gone (`LOOKED_AT` removed). `ReportCard` and `MemoryUpdates` (`inset={false}`) sit flush.
+- **Settings** rewritten as grouped cards (`Group`/`Item` with hairlines): Your money (report, memory, import with "N imports so far"), Logging (check before saving as a toggle row, add by hand), Reminders ("Daily reminders" opens a sheet with `ReminderEditor` and "Send a test"; Weekly check-in), More (widgets → new `app/widgets.tsx`, Connect Claude, replay the welcome), Sign out. Past imports with Undo moved to the bottom of the Import screen.
+- **Yesterday's entry saved as today:** the AI reads "yesterday"/"kal" right (checked live: all came out 6 Nov); the user's note likely had no day, so it was saved now. The card you check before saving showed only the time. Now: `whenLabel` ("Yesterday, 8:00 pm"); `components/day-picker.tsx` `DayChips` (Today · Yesterday · Earlier… with a sheet of the last two weeks); the save card has DayChips to move its non-bank entries (`moveToDay` keeps the time but never goes past now); the entry screen has "Change date" (PATCH via the new `useUpdateExpense`), hidden for bank-SMS entries.
+
 ## Cleaner Plan and report, a ring, tappable categories (2026-11-07, ~12:50)
 
 - **Duplicates confirmed** in the report's biggest spends: "Room rent for November ₹8,000" twice and "SIP in Nifty 50 index fund ₹2,000" twice on 1 Nov (from importing the same chat more than once). The History banner lists them; the user should delete one of each.

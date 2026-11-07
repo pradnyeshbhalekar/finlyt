@@ -3,11 +3,12 @@
 // first (plus the one you picked), to keep Home calm; "See all" shows the rest.
 import { MessageSquareText } from "lucide-react-native";
 import { useState } from "react";
-import { Alert, Pressable, View } from "react-native";
+import { Pressable, View } from "react-native";
 
-import { timeLabel } from "@/lib/dates";
+import { dateTimeLabel } from "@/lib/dates";
 import { formatPaise } from "@/lib/money";
 import type { Account, BankTxnItem } from "@/lib/types";
+import { askSheet } from "@/lib/ask-sheet";
 
 import { Button, Icon, SectionLabel, Txt } from "./ui";
 
@@ -30,17 +31,18 @@ export function ToLog({
 
   function askResolve(t: BankTxnItem) {
     const credit = t.direction === "credit";
-    Alert.alert(
-      credit ? `${formatPaise(t.amount_paise)} from ${t.name}` : `${formatPaise(t.amount_paise)} to ${t.name}`,
-      credit ? "If it's someone paying you back, tap it and say so instead." : "Not something you spent on?",
-      [
-        { text: "Cancel", style: "cancel" },
+    askSheet({
+      title: credit ? `${formatPaise(t.amount_paise)} from ${t.name}` : `${formatPaise(t.amount_paise)} to ${t.name}`,
+      message: credit
+        ? "If it's someone paying you back, tap it and say so instead."
+        : "Not something you spent on? Mark it so it leaves To log.",
+      actions: [
         credit
-          ? { text: "Income", onPress: () => onResolve(t, "income") }
-          : { text: "Transfer to my account", onPress: () => onResolve(t, "transfer") },
-        { text: "Ignore", style: "destructive", onPress: () => onResolve(t, "ignored") },
+          ? { label: "It's income", onPress: () => onResolve(t, "income") }
+          : { label: "Moved to my own account", onPress: () => onResolve(t, "transfer") },
+        { label: "Ignore it", danger: true, onPress: () => onResolve(t, "ignored") },
       ],
-    );
+    });
   }
 
   return (
@@ -67,7 +69,7 @@ export function ToLog({
                   {credit ? `From ${t.name}` : t.name}
                 </Txt>
                 <Txt tone="muted" className="mt-0.5 text-sm" numberOfLines={1}>
-                  {[timeLabel(t.occurred_at), t.channel.toUpperCase(), account].filter(Boolean).join(" · ")}
+                  {[dateTimeLabel(t.occurred_at), t.channel.toUpperCase(), account].filter(Boolean).join(" · ")}
                 </Txt>
               </View>
               <Txt weight="semibold" tone={credit ? "accent" : "fg"} className="text-base">

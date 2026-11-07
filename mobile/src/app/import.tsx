@@ -14,12 +14,13 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Coin } from "@/components/brand";
 import { CategoryBadge } from "@/components/category-icon";
 import { Button, Icon, SectionLabel, Txt } from "@/components/ui";
-import { dayLabel } from "@/lib/dates";
+import { dayHeading } from "@/lib/dates";
 import { formatPaise } from "@/lib/money";
-import { fetchImportPrompt, useImportCommit, useImportPreview, useMeta, useUndoImport } from "@/lib/queries";
+import { fetchImportPrompt, useImportBatches, useImportCommit, useImportPreview, useMeta, useUndoImport } from "@/lib/queries";
 import { importGate } from "@/lib/import-gate";
 import { fonts, useTheme } from "@/lib/theme";
 import type { ImportEntry, ImportPreview, ImportResult, ImportSource } from "@/lib/types";
+import { confirmDelete as askDelete } from "@/lib/ask-sheet";
 
 const SOURCES: { value: ImportSource; label: string; url: string | null }[] = [
   { value: "claude", label: "Claude", url: "https://claude.ai/new" },
@@ -79,6 +80,11 @@ export default function ImportScreen() {
   const read = useImportPreview();
   const save = useImportCommit();
   const undo = useUndoImport();
+  const batches = useImportBatches();
+
+  function confirmUndo(id: number, what: string) {
+    askDelete("Undo this import?", `${what}. Everything it added is removed.`, () => undo.mutate(id), "Undo import");
+  }
   const [source, setSource] = useState<ImportSource>("claude");
   const [copied, setCopied] = useState(false);
   const [text, setText] = useState("");
@@ -235,7 +241,7 @@ export default function ImportScreen() {
           }
           renderSectionHeader={({ section }) => (
             <View className="mb-1 mt-6 flex-row items-baseline justify-between px-1">
-              <SectionLabel>{dayLabel(section.day)}</SectionLabel>
+              <SectionLabel>{dayHeading(section.day)}</SectionLabel>
               <Txt tone="muted" className="text-sm">
                 {formatPaise(
                   section.data
@@ -431,6 +437,34 @@ export default function ImportScreen() {
             loading={read.isPending}
             disabled={text.trim().length < 2}
           />
+          {/* Earlier imports, each one undoable. */}
+          {!fromOnboarding && (batches.data?.items.length ?? 0) > 0 ? (
+            <View className="mt-10">
+              <SectionLabel>Past imports</SectionLabel>
+              <View className="mt-2 overflow-hidden rounded-3xl bg-surface">
+                {(batches.data?.items ?? []).map((b, i) => {
+                  const what = `${b.entry_count} ${b.entry_count === 1 ? "entry" : "entries"} from ${b.source_name}`;
+                  return (
+                    <View key={b.id} className={`flex-row items-center gap-3 px-4 py-3 ${i ? "border-t border-line" : ""}`}>
+                      <View className="flex-1">
+                        <Txt weight="medium">{what}</Txt>
+                        {b.first_day ? (
+                          <Txt tone="muted" className="text-xs">
+                            {shortDay(b.first_day)} to {shortDay(b.last_day)}
+                          </Txt>
+                        ) : null}
+                      </View>
+                      <Pressable onPress={() => confirmUndo(b.id, what)} hitSlop={8} accessibilityRole="button">
+                        <Txt weight="medium" tone="danger" className="text-sm">
+                          Undo
+                        </Txt>
+                      </Pressable>
+                    </View>
+                  );
+                })}
+              </View>
+            </View>
+          ) : null}
           {/* Importing is optional: from onboarding, skipping goes on to the next step. */}
           {fromOnboarding ? (
             <Button label="Skip, I don't have one" variant="ghost" onPress={leave} className="mt-1" />

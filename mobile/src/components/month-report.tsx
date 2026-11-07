@@ -71,7 +71,7 @@ function categoryRows(r: MonthReport, limit?: number, onMore?: () => void) {
 /** The compact version, under Ask Finlyt's answer. */
 export function ReportCard({ report: r }: { report: MonthReport }) {
   return (
-    <View className="mb-3 ml-9 rounded-3xl border border-line p-4">
+    <View className="mb-3 rounded-3xl border border-line p-4">
       <Txt tone="muted" className="text-sm">
         {r.label}
         {r.current ? `, so far (${r.days_counted} days)` : ""}

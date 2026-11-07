@@ -12,17 +12,18 @@ import {
   UserRound,
   type LucideIcon,
 } from "lucide-react-native";
-import { ActivityIndicator, Alert, Pressable, SectionList, View } from "react-native";
+import { ActivityIndicator, Pressable, SectionList, View } from "react-native";
 
 import { Coin } from "@/components/brand";
 import { CategoryBadge } from "@/components/category-icon";
 import { ExpenseRow } from "@/components/expense-row";
 import { Icon, Row, Txt } from "@/components/ui";
-import { dayLabel, isoDate, timeLabel } from "@/lib/dates";
+import { dayHeading, isoDate, timeLabel } from "@/lib/dates";
 import { formatPaise } from "@/lib/money";
 import { useActivity, useDeleteExpense, useDuplicates, useMeta } from "@/lib/queries";
 import { useTheme } from "@/lib/theme";
 import type { ActivityItem, Expense } from "@/lib/types";
+import { confirmDelete as askDelete } from "@/lib/ask-sheet";
 
 type DaySection = { day: string; spent: number; data: ActivityItem[] };
 
@@ -74,10 +75,9 @@ export default function History() {
   const items = feed.data?.pages.flatMap((p) => p.items) ?? [];
 
   function confirmDelete(expense: Expense) {
-    Alert.alert("Delete this entry?", `${expense.description} · ${formatPaise(expense.my_share_paise)}`, [
-      { text: "Cancel", style: "cancel" },
-      { text: "Delete", style: "destructive", onPress: () => remove.mutate(expense.id) },
-    ]);
+    askDelete("Delete this entry?", `${expense.description} · ${formatPaise(expense.my_share_paise)}`, () =>
+      remove.mutate(expense.id),
+    );
   }
 
   function renderItem(item: ActivityItem) {
@@ -178,7 +178,7 @@ export default function History() {
       renderSectionHeader={({ section }) => (
         <View className="flex-row justify-between bg-bg px-3 pb-1 pt-6">
           <Txt weight="semibold" className="text-sm">
-            {dayLabel(section.day)}
+            {dayHeading(section.day)}
           </Txt>
           {section.spent > 0 ? (
             <Txt tone="muted" className="text-sm">

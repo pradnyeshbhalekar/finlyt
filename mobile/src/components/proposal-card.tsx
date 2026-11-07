@@ -2,11 +2,12 @@
 import { ArrowLeftRight, Check, CircleAlert, HandCoins, Pencil, UserRound, X } from "lucide-react-native";
 import { View } from "react-native";
 
-import { timeLabel } from "@/lib/dates";
+import { isoDate, whenLabel } from "@/lib/dates";
 import { formatPaise } from "@/lib/money";
 import type { Account, Category, Proposal } from "@/lib/types";
 
 import { CategoryBadge } from "./category-icon";
+import { DayChips } from "./day-picker";
 import { Button, Icon, IconButton, Txt } from "./ui";
 
 export function ProposalCard({
@@ -17,6 +18,7 @@ export function ProposalCard({
   onSave,
   onEdit,
   onDiscard,
+  onMoveDay,
 }: {
   proposal: Proposal;
   accounts: Map<number, Account>;
@@ -25,6 +27,8 @@ export function ProposalCard({
   onSave: () => void;
   onEdit: () => void;
   onDiscard: () => void;
+  /** Move the entries that aren't from a bank SMS to another day (keeping their time). */
+  onMoveDay?: (day: string) => void;
 }) {
   const count =
     proposal.expenses.length +
@@ -34,6 +38,8 @@ export function ProposalCard({
     (proposal.debts?.length ?? 0) +
     (proposal.repayments?.length ?? 0);
   const txnLabel = (id: number) => proposal.txns.find((t) => t.id === id);
+  // The day can be changed for entries that aren't from a bank SMS (those keep the bank's time).
+  const movable = proposal.expenses.find((e) => !e.payments.some((p) => p.bank_txn_id));
 
   return (
     <View className="rounded-3xl bg-surface p-4">
@@ -43,6 +49,12 @@ export function ProposalCard({
         </Txt>
         <IconButton icon={X} label="Discard" onPress={onDiscard} tone="muted" disabled={saving} />
       </View>
+
+      {onMoveDay && movable ? (
+        <View className="mb-1 mt-1">
+          <DayChips value={isoDate(new Date(movable.occurred_at))} onPick={onMoveDay} />
+        </View>
+      ) : null}
 
       {proposal.expenses.map((e, i) => {
         const paid = e.payments.map((p) => accounts.get(p.account_id)?.name ?? "Account").join(" + ");
@@ -56,7 +68,7 @@ export function ProposalCard({
                 {e.description}
               </Txt>
               <Txt tone="muted" className="mt-0.5 text-sm">
-                {[timeLabel(e.occurred_at), category, paid, owed].filter(Boolean).join(" · ")}
+                {[whenLabel(e.occurred_at), category, paid, owed].filter(Boolean).join(" · ")}
               </Txt>
               {e.issues.map((issue, j) => (
                 <Txt key={j} tone="warn" className="mt-1 text-sm">

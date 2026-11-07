@@ -3,16 +3,19 @@
 // tapping an entry on Home or in History.
 import { router, useLocalSearchParams } from "expo-router";
 import { Check, MessageSquareQuote, Trash2 } from "lucide-react-native";
-import { ActivityIndicator, Alert, ScrollView, View } from "react-native";
+import { useState } from "react";
+import { ActivityIndicator, Pressable, ScrollView, View } from "react-native";
 import Animated, { FadeInDown } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { CategoryBadge } from "@/components/category-icon";
+import { DayChips } from "@/components/day-picker";
 import { Divider, Icon, IconButton, Row, SectionLabel, Txt } from "@/components/ui";
-import { timeLabel } from "@/lib/dates";
+import { isoDate, moveToDay, timeLabel } from "@/lib/dates";
 import { formatPaise } from "@/lib/money";
-import { useDeleteExpense, useExpense, useMeta } from "@/lib/queries";
+import { useDeleteExpense, useExpense, useMeta, useUpdateExpense } from "@/lib/queries";
 import { useTheme } from "@/lib/theme";
+import { confirmDelete as askDelete } from "@/lib/ask-sheet";
 
 const appear = (i: number) => FadeInDown.delay(60 * i).duration(320);
 
@@ -38,6 +41,8 @@ export default function ExpenseDetail() {
   const expense = useExpense(Number(id));
   const meta = useMeta();
   const remove = useDeleteExpense();
+  const update = useUpdateExpense();
+  const [changingDay, setChangingDay] = useState(false);
 
   const e = expense.data;
   if (!e) {
@@ -65,16 +70,9 @@ export default function ExpenseDetail() {
   const split = entry.my_share_paise !== entry.total_paise;
 
   function confirmDelete() {
-    Alert.alert("Delete this entry?", `${entry.description} · ${formatPaise(entry.my_share_paise)}`, [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Delete",
-        style: "destructive",
-        onPress: () => {
-          void remove.mutateAsync(entry.id).then(() => router.back());
-        },
-      },
-    ]);
+    askDelete("Delete this entry?", `${entry.description} · ${formatPaise(entry.my_share_paise)}`, () => {
+      void remove.mutateAsync(entry.id).then(() => router.back());
+    });
   }
 
   return (
@@ -107,6 +105,26 @@ export default function ExpenseDetail() {
             {split ? `Your share of ${formatPaise(entry.total_paise)} · ` : ""}
             {day}, {timeLabel(entry.occurred_at)}
           </Txt>
+          {/* Logged on the wrong day (forgot yesterday's)? Move it. Bank SMS entries keep the bank's date. */}
+          {!entry.payments.some((p) => p.bank_txn_id) ? (
+            changingDay ? (
+              <View className="mt-3">
+                <DayChips
+                  value={isoDate(when)}
+                  onPick={(pick) => {
+                    setChangingDay(false);
+                    update.mutate({ id: entry.id, occurred_at: moveToDay(entry.occurred_at, pick) });
+                  }}
+                />
+              </View>
+            ) : (
+              <Pressable onPress={() => setChangingDay(true)} hitSlop={6} className="mt-2 self-start">
+                <Txt weight="medium" tone="accent" className="text-sm">
+                  {update.isPending ? "Moving…" : "Change date"}
+                </Txt>
+              </Pressable>
+            )
+          ) : null}
         </Animated.View>
 
         <Divider className="my-5" />

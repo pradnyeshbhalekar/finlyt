@@ -498,3 +498,23 @@ export type DuplicateGroup = {
     occurred_at: string;
   }[];
 };
+
+// ── Savings goals ────────────────────────────────────────────────────────────
+
+export type Goal = {
+  id: number;
+  name: string;
+  target_paise: number;
+  saved_paise: number;
+  left_paise: number;
+  progress: number;
+  due_on: string | null;
+  months_left: number | null;
+  /** What a month it takes to reach the target by its date. */
+  monthly_needed_paise: number | null;
+  saved_this_month_paise: number;
+  done: boolean;
+  archived: boolean;
+  created_at: string;
+  deposits?: { id: number; amount_paise: number; note: string | null; created_at: string }[];
+};

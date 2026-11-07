@@ -3,14 +3,15 @@
 // only one is left. Opened from History.
 import { router } from "expo-router";
 import { CircleCheck, Trash2 } from "lucide-react-native";
-import { ActivityIndicator, Alert, ScrollView, View } from "react-native";
+import { ActivityIndicator, ScrollView, View } from "react-native";
 
 import { CategoryBadge } from "@/components/category-icon";
 import { Button, Icon, IconButton, SectionLabel, Txt } from "@/components/ui";
-import { dayLabel, timeLabel } from "@/lib/dates";
+import { dayHeading, timeLabel } from "@/lib/dates";
 import { formatPaise } from "@/lib/money";
 import { useDeleteExpense, useDuplicates, useMeta } from "@/lib/queries";
 import { useTheme } from "@/lib/theme";
+import { confirmDelete as askDelete } from "@/lib/ask-sheet";
 
 const SOURCE = { import: "Imported", log: "Logged", manual: "Added by hand" } as const;
 
@@ -23,10 +24,7 @@ export default function Duplicates() {
   const groups = dupes.data?.groups ?? [];
 
   function confirmDelete(id: number, what: string) {
-    Alert.alert("Delete this copy?", what, [
-      { text: "Cancel", style: "cancel" },
-      { text: "Delete", style: "destructive", onPress: () => remove.mutate(id) },
-    ]);
+    askDelete("Delete this copy?", what, () => remove.mutate(id));
   }
 
   if (dupes.isPending) {
@@ -59,7 +57,7 @@ export default function Duplicates() {
           {groups.map((g) => (
             <View key={`${g.day}-${g.total_paise}`} className="mt-7">
               <View className="mb-2 flex-row items-baseline justify-between">
-                <SectionLabel>{dayLabel(g.day)}</SectionLabel>
+                <SectionLabel>{dayHeading(g.day)}</SectionLabel>
                 <Txt weight="semibold">{formatPaise(g.total_paise)} each</Txt>
               </View>
               <View className="overflow-hidden rounded-3xl bg-surface">

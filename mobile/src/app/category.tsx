@@ -5,7 +5,7 @@ import { ActivityIndicator, SectionList, View } from "react-native";
 
 import { ExpenseRow } from "@/components/expense-row";
 import { SectionLabel, Txt } from "@/components/ui";
-import { dayLabel, isoDate } from "@/lib/dates";
+import { dayHeading, isoDate } from "@/lib/dates";
 import { formatPaise } from "@/lib/money";
 import { useExpenses, useMeta } from "@/lib/queries";
 import { useTheme } from "@/lib/theme";
@@ -64,7 +64,7 @@ export default function CategoryMonth() {
           }
           renderSectionHeader={({ section }) => (
             <View className="mt-5 flex-row items-baseline justify-between px-3">
-              <SectionLabel>{dayLabel(section.day)}</SectionLabel>
+              <SectionLabel>{dayHeading(section.day)}</SectionLabel>
               <Txt tone="muted" className="text-sm">
                 {formatPaise(section.data.reduce((sum, e) => sum + e.my_share_paise, 0))}
               </Txt>

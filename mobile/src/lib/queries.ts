@@ -5,6 +5,7 @@ import { api, queryString } from "./api";
 import type {
   ActivityPage,
   DuplicateGroup,
+  Goal,
   AskThread,
   AskThreadList,
   AskTurn,
@@ -78,6 +79,16 @@ export function useRefreshMoney() {
       queryClient.invalidateQueries({ queryKey: ["memory"] }),
       queryClient.invalidateQueries({ queryKey: ["duplicates"] }),
     ]);
+}
+
+/** Change an entry (only the fields sent change), e.g. move it to the day it happened. */
+export function useUpdateExpense() {
+  const refresh = useRefreshMoney();
+  return useMutation({
+    mutationFn: ({ id, ...patch }: { id: number; occurred_at?: string }) =>
+      api<Expense>(`/api/expenses/${id}`, { method: "PATCH", body: patch }),
+    onSuccess: refresh,
+  });
 }
 
 export function useCreateExpense() {
@@ -250,11 +261,6 @@ export function useDeleteAskThread() {
 }
 
 /** A separate sign-in token for an AI assistant (MCP client) such as Claude. */
-export function useConnectToken() {
-  return useMutation({
-    mutationFn: () => api<{ token: string; mcp_url: string }>("/api/auth/connect-token", { method: "POST" }),
-  });
-}
 
 // ── Import from an AI chat ───────────────────────────────────────────────────
 
@@ -377,4 +383,47 @@ export function useDuplicates() {
     queryFn: () => api<{ groups: DuplicateGroup[] }>("/api/expenses/duplicates"),
     retry: false,
   });
+}
+
+// ── Savings goals ────────────────────────────────────────────────────────────
+
+export function useGoals() {
+  return useQuery({ queryKey: ["goals"], queryFn: () => api<{ items: Goal[] }>("/api/goals"), retry: false });
+}
+
+export function useGoal(id: number) {
+  return useQuery({ queryKey: ["goals", id], queryFn: () => api<Goal>(`/api/goals/${id}`), enabled: Number.isFinite(id) });
+}
+
+function useGoalChange<T>(request: (arg: T) => Promise<Goal | void>) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: request,
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["goals"] });
+      void queryClient.invalidateQueries({ queryKey: ["memory"] });
+    },
+  });
+}
+
+export function useCreateGoal() {
+  return useGoalChange((body: { name: string; target_paise: number; due_on: string | null }) =>
+    api<Goal>("/api/goals", { method: "POST", body }),
+  );
+}
+
+export function useUpdateGoal() {
+  return useGoalChange(({ id, ...patch }: { id: number; name?: string; target_paise?: number; due_on?: string | null }) =>
+    api<Goal>(`/api/goals/${id}`, { method: "PATCH", body: patch }),
+  );
+}
+
+export function useDeleteGoal() {
+  return useGoalChange((id: number) => api<void>(`/api/goals/${id}`, { method: "DELETE" }));
+}
+
+export function useGoalDeposit() {
+  return useGoalChange(({ id, amount_paise, note }: { id: number; amount_paise: number; note?: string }) =>
+    api<Goal>(`/api/goals/${id}/deposits`, { method: "POST", body: { amount_paise, note } }),
+  );
 }

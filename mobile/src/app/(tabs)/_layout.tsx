@@ -3,6 +3,7 @@
 import { Tabs } from "expo-router/js-tabs";
 
 import { TabBar } from "@/components/tab-bar";
+import { HeaderAvatar, TabLogo } from "@/components/tab-header";
 import { fonts, useTheme } from "@/lib/theme";
 
 export default function TabsLayout() {
@@ -14,6 +15,12 @@ export default function TabsLayout() {
         headerShown: true,
         headerShadowVisible: false,
         headerTitleStyle: { fontFamily: fonts.semibold },
+        // The logo on every tab, like Home; the tab bar says which one you're on.
+        headerTitle: () => <TabLogo />,
+        headerTitleAlign: "left",
+        headerRight: () => <HeaderAvatar />,
+        headerRightContainerStyle: { paddingRight: 12 },
+        headerLeftContainerStyle: { paddingLeft: 8 },
         animation: "fade",
         sceneStyle: { backgroundColor: colors.bg },
       }}

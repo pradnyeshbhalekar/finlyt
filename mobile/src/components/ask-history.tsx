@@ -3,13 +3,14 @@
 // chats nobody has touched for `keep_days` (10), and the footer says so.
 import { Search, SquarePen } from "lucide-react-native";
 import { useMemo, useState } from "react";
-import { ActivityIndicator, Alert, Pressable, ScrollView, TextInput, useWindowDimensions, View } from "react-native";
+import { ActivityIndicator, Pressable, ScrollView, TextInput, useWindowDimensions, View } from "react-native";
 
 import { Sheet, Txt } from "@/components/ui";
 import { timeLabel } from "@/lib/dates";
 import { useAskThreads, useDeleteAskThread } from "@/lib/queries";
 import { fonts, useTheme, WHITE } from "@/lib/theme";
 import type { AskThreadSummary } from "@/lib/types";
+import { confirmDelete as askDelete } from "@/lib/ask-sheet";
 
 const GROUPS = ["Today", "Yesterday", "Previous 7 days", "Older"] as const;
 type Group = (typeof GROUPS)[number];
@@ -67,14 +68,7 @@ export function AskHistory({
   }, [threads.data, query]);
 
   function confirmDelete(t: AskThreadSummary) {
-    Alert.alert("Delete this chat?", t.title, [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Delete",
-        style: "destructive",
-        onPress: () => remove.mutate(t.id, { onSuccess: () => onDeleted(t.id) }),
-      },
-    ]);
+    askDelete("Delete this chat?", t.title, () => remove.mutate(t.id, { onSuccess: () => onDeleted(t.id) }));
   }
 
   function close() {

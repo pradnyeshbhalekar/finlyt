@@ -158,6 +158,9 @@ def context(s: Session, user_id: int) -> str:
         lines.append("".join(parts) + ".")
     for n in data["notes"]:
         lines.append(f"- Note: {n['text']}")
+    from . import goals
+
+    lines.extend(goals.context_lines(s, user_id))
     if data["after_commitments_paise"] is not None:
         left = data["after_commitments_paise"]
         save = left // 5 // 1000 * 1000

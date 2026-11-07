@@ -315,3 +315,34 @@ class CommitmentPatch(_In):
     paid_before_paise: int | None = Field(default=None, ge=0)
     rules: list[IncomeRuleIn] | None = Field(default=None, max_length=6)
     active: bool | None = None
+
+
+# ── Savings goals ────────────────────────────────────────────────────────────
+
+
+class GoalIn(_In):
+    name: str = Field(min_length=1, max_length=80)
+    target_paise: int = Field(gt=0)
+    due_on: date | None = None
+
+
+class GoalPatch(_In):
+    """Only the fields sent change. Send due_on: null to clear the date."""
+
+    name: str | None = Field(default=None, min_length=1, max_length=80)
+    target_paise: int | None = Field(default=None, gt=0)
+    due_on: date | None = None
+    archived: bool | None = None
+
+
+class DepositIn(_In):
+    """Money put towards a goal (positive) or taken back out (negative)."""
+
+    amount_paise: int
+    note: str | None = Field(default=None, max_length=120)
+
+    @model_validator(mode="after")
+    def _not_zero(self) -> DepositIn:
+        if self.amount_paise == 0:
+            raise ValueError("An amount of zero doesn't change anything")
+        return self

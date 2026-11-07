@@ -15,6 +15,7 @@ import * as SystemUI from "expo-system-ui";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useColorScheme, View, type GestureResponderEvent } from "react-native";
 
+import { AskSheetHost } from "@/components/ask-sheet-host";
 import { Splash } from "@/components/splash";
 import { AuthProvider, useAuth } from "@/lib/auth";
 import { useImportGate } from "@/lib/import-gate";
@@ -23,6 +24,8 @@ import { scheduleReminders, syncCheckInDay, useNotificationRedirect } from "@/li
 import { PrefsProvider, usePrefs } from "@/lib/prefs";
 import { fonts, resolveTheme, ThemeContext, themeVars, useTheme } from "@/lib/theme";
 import { scheduleWidgetRefresh } from "@/widgets/refresh";
+
+import { SplashTheme } from "../../modules/splash-theme";
 
 void SplashScreen.preventAutoHideAsync();
 
@@ -59,6 +62,16 @@ function Themed({ children }: { children: ReactNode }) {
   useEffect(() => {
     scheduleWidgetRefresh(500);
   }, [mode]);
+
+  // Android's launch screen follows the theme too (from the next launch; Android 13+).
+  useEffect(() => {
+    const name = mode === "auto" ? "Default" : theme.name === "ink" ? "Ink" : theme.name === "dark" ? "Dark" : "Light";
+    try {
+      SplashTheme?.set(name);
+    } catch {
+      // Older Android or a build without the module: the launch screen follows the phone's setting.
+    }
+  }, [mode, theme.name]);
 
   const base = theme.isDark ? DarkTheme : DefaultTheme;
   const navigationTheme = {
@@ -146,6 +159,9 @@ function RootNavigator({ fontsLoaded }: { fontsLoaded: boolean }) {
         <Stack.Screen name="memory" options={{ ...header, title: "What Finlyt remembers" }} />
         <Stack.Screen name="duplicates" options={{ ...header, title: "Possible duplicates" }} />
         <Stack.Screen name="category" options={{ ...header, title: "Category" }} />
+        <Stack.Screen name="widgets" options={{ ...header, title: "Home screen widgets" }} />
+        <Stack.Screen name="goals" options={{ ...header, title: "Savings goals" }} />
+        <Stack.Screen name="goal/[id]" options={{ ...header, title: "Goal" }} />
         <Stack.Screen name="settings" options={{ ...header, title: "Settings" }} />
         <Stack.Screen
           name="expense/[id]"
@@ -176,6 +192,7 @@ function RootNavigator({ fontsLoaded }: { fontsLoaded: boolean }) {
         <Stack.Screen name="sign-in" />
       </Stack.Protected>
     </Stack>
+    <AskSheetHost />
     {ready && !introDone ? <Splash onDone={() => setIntroDone(true)} /> : null}
     </>
   );
