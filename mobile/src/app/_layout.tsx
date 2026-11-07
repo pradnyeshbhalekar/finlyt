@@ -17,6 +17,7 @@ import { useColorScheme, View, type GestureResponderEvent } from "react-native";
 
 import { Splash } from "@/components/splash";
 import { AuthProvider, useAuth } from "@/lib/auth";
+import { useImportGate } from "@/lib/import-gate";
 import { taps } from "@/lib/motion";
 import { scheduleReminders, syncCheckInDay, useNotificationRedirect } from "@/lib/notifications";
 import { PrefsProvider, usePrefs } from "@/lib/prefs";
@@ -106,6 +107,7 @@ function RootNavigator({ fontsLoaded }: { fontsLoaded: boolean }) {
   const prefs = usePrefs();
   const { colors } = useTheme();
   const signedIn = status === "signed-in";
+  const importOpen = useImportGate();
   const ready = fontsLoaded && prefs.loaded && status !== "loading";
   const [introDone, setIntroDone] = useState(false);
 
@@ -163,9 +165,9 @@ function RootNavigator({ fontsLoaded }: { fontsLoaded: boolean }) {
       <Stack.Protected guard={signedIn && !prefs.onboarded}>
         <Stack.Screen name="onboarding" />
       </Stack.Protected>
-      {/* Reachable from onboarding and from Settings, so only signing in guards it. It comes after
-          onboarding so a new user still starts there. */}
-      <Stack.Protected guard={signedIn}>
+      {/* From Settings once onboarded; during onboarding only after "Import from a chat" (see
+          import-gate), or it would be the screen the app opens on. */}
+      <Stack.Protected guard={signedIn && (prefs.onboarded || importOpen)}>
         <Stack.Screen name="import" options={{ ...header, title: "Import from AI" }} />
       </Stack.Protected>
       <Stack.Protected guard={!signedIn}>

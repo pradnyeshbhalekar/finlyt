@@ -1,7 +1,7 @@
 // First run after signing in, one thing at a time: what Finlyt does, check-in times, how to save
 // what you tell it, bank SMS, importing from an AI chat, and the weekly planning check-in (day and
 // time). The coin sits at the top of every step, and each step's pieces come in one after another.
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import {
   Bell,
   CalendarClock,
@@ -25,6 +25,7 @@ import { ReminderEditor } from "@/components/reminder-editor";
 import { formatClock, TimePickerSheet } from "@/components/time-picker";
 import { Button, Icon, IconButton, Row, Screen, Txt } from "@/components/ui";
 import { useAuth } from "@/lib/auth";
+import { importGate } from "@/lib/import-gate";
 import {
   DEFAULT_CHECK_IN,
   DEFAULT_REMINDERS,
@@ -135,7 +136,8 @@ export default function Onboarding() {
     "import",
     "plan",
   ];
-  const [index, setIndex] = useState(0);
+  const { step: startAt } = useLocalSearchParams<{ step?: string }>();
+  const [index, setIndex] = useState(() => Math.max(steps.indexOf(startAt as Step), 0));
   const [times, setTimes] = useState<ReminderTime[]>(DEFAULT_REMINDERS);
   const [review, setReview] = useState(prefs.reviewBeforeSave);
   const [busy, setBusy] = useState(false);
@@ -321,7 +323,9 @@ export default function Onboarding() {
           label="Import from a chat"
           onPress={() => {
             next(); // coming back from the import lands on the next step
-            router.push({ pathname: "/import", params: { from: "onboarding" } });
+            importGate.open();
+            // Let the navigator see the screen is reachable before going to it.
+            setTimeout(() => router.push({ pathname: "/import", params: { from: "onboarding" } }), 0);
           }}
         />
         <Button label="Skip, I don't have one" variant="ghost" onPress={next} />

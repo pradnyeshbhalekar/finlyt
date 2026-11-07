@@ -223,3 +223,18 @@ def test_imports_are_private(engine):
     finally:
         outer.rollback()
         connection.close()
+
+
+def test_a_same_day_payback_finds_the_dinner_it_pays_back(client, me):
+    """The dinner has a time (21:00); the payback that evening has none (so noon). It still settles."""
+    entries = [
+        {"date": "2026-11-05", "time": "21:00", "type": "expense", "description": "Barbeque Nation dinner",
+         "category": "Food", "amount": 1600, "my_share": 800, "payments": [{"method": "Kotak", "amount": 1600}],
+         "owed_by": [{"person": "Sneha", "amount": 800}]},
+        {"date": "2026-11-05", "time": None, "type": "payback", "description": "Sneha paid back her share",
+         "amount": 800, "person": "Sneha"},
+    ]
+    result = client.post("/api/import/commit", json={"entries": keep(preview(client, reply(entries)))}).get_json()
+    assert result["skipped"] == []
+    assert result["saved"] == {"expense": 1, "payback": 1, "owe": 0, "repay": 0}
+    assert client.get("/api/people/balances").get_json()["owed_to_me"] == []

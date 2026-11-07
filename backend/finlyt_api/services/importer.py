@@ -5,8 +5,9 @@
    repairs it.
 3. The preview maps every entry onto my accounts, categories and people, flags what looks like
    it's already logged, and links bank payments from SMS that are still waiting to be logged.
-4. The kept entries are saved as one batch, oldest first, so paybacks find their dues. A
-   payback or repayment that doesn't fit what's owed is skipped rather than failing the import.
+4. The kept entries are saved as one batch: expenses and money owed first, then paybacks and
+   repayments, so paybacks find their dues whatever times the chat gave. A payback or repayment
+   that doesn't fit what's owed is skipped rather than failing the import.
 5. Undoing deletes the batch and everything it made.
 """
 
@@ -410,7 +411,12 @@ def commit(s: Session, user_id: int, data: ImportCommitIn) -> dict[str, Any]:
     s.flush()
     saved: dict[str, int] = {"expense": 0, "payback": 0, "owe": 0, "repay": 0}
     skipped: list[dict[str, Any]] = []
-    for i, entry in sorted(enumerate(data.entries), key=lambda pair: (pair[1].occurred_at, pair[0])):
+    # Expenses and money owed first, then paybacks and repayments: a payback often has no time
+    # (so it's saved at noon) while the dinner it pays back was at 9 PM the same day, and it
+    # can only settle dues that already exist.
+    first = {"expense": 0, "owe": 0, "payback": 1, "repay": 1}
+    order = sorted(enumerate(data.entries), key=lambda pair: (first[pair[1].kind], pair[1].occurred_at, pair[0]))
+    for i, entry in order:
         point = s.begin_nested()
         try:
             _save_one(s, user_id, batch, entry)

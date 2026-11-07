@@ -13,11 +13,11 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Coin } from "@/components/brand";
 import { CategoryBadge } from "@/components/category-icon";
-import { KeyboardAware } from "@/components/keyboard";
 import { Button, Icon, SectionLabel, Txt } from "@/components/ui";
 import { dayLabel } from "@/lib/dates";
 import { formatPaise } from "@/lib/money";
 import { fetchImportPrompt, useImportCommit, useImportPreview, useMeta, useUndoImport } from "@/lib/queries";
+import { importGate } from "@/lib/import-gate";
 import { fonts, useTheme } from "@/lib/theme";
 import type { ImportEntry, ImportPreview, ImportResult, ImportSource } from "@/lib/types";
 
@@ -91,6 +91,16 @@ export default function ImportScreen() {
   const accounts = useMemo(() => new Map((meta.data?.accounts ?? []).map((a) => [a.id, a.name])), [meta.data]);
   const categories = useMemo(() => new Map((meta.data?.categories ?? []).map((c) => [c.id, c.name])), [meta.data]);
   const chat = SOURCES.find((s) => s.value === source)!;
+
+  /** Leave the import. From onboarding there may be no screen behind this one (so "back" did
+   *  nothing): go on to onboarding's last step instead. */
+  function leave() {
+    if (fromOnboarding) {
+      router.replace({ pathname: "/onboarding", params: { step: "plan" } });
+      setTimeout(importGate.close, 600); // once onboarding is showing, Import isn't reachable again
+    } else if (router.canGoBack()) router.back();
+    else router.replace("/");
+  }
 
   async function copyPrompt() {
     setError(null);
@@ -176,7 +186,7 @@ export default function ImportScreen() {
         ) : null}
         <View className="flex-1" />
         <View className="gap-3" style={{ paddingBottom: Math.max(insets.bottom, 16) }}>
-          <Button label="Done" onPress={() => router.back()} />
+          <Button label={fromOnboarding ? "Continue" : "Done"} onPress={leave} />
           {!undone ? (
             <Button label="Undo this import" icon={Undo2} variant="ghost" onPress={() => void undoImport()} loading={undo.isPending} />
           ) : null}
@@ -306,7 +316,12 @@ export default function ImportScreen() {
   // ── Copy the prompt, paste the reply ──
   return (
     <View className="flex-1 bg-bg">
-      <ScrollView contentContainerClassName="px-5 pb-6 pt-4" keyboardShouldPersistTaps="handled">
+      <ScrollView
+        className="flex-1"
+        contentContainerClassName="px-5 pt-4"
+        contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 16) + 24 }}
+        keyboardShouldPersistTaps="handled"
+      >
         <Animated.View entering={appear(0)}>
           <Coin size={56} variant="bare" />
           <Txt weight="bold" className="mt-5 text-3xl" style={{ letterSpacing: -0.5 }}>
@@ -401,9 +416,7 @@ export default function ImportScreen() {
             {error}
           </Txt>
         ) : null}
-      </ScrollView>
-      <KeyboardAware rest={Math.max(insets.bottom, 16)}>
-        <View className="px-5 pt-2">
+        <View className="mt-6">
           {read.isPending ? (
             <View className="mb-3 flex-row items-center gap-3">
               <ActivityIndicator color={colors.muted} />
@@ -420,10 +433,11 @@ export default function ImportScreen() {
           />
           {/* Importing is optional: from onboarding, skipping goes on to the next step. */}
           {fromOnboarding ? (
-            <Button label="Skip, I don't have one" variant="ghost" onPress={() => router.back()} className="mt-1" />
+            <Button label="Skip, I don't have one" variant="ghost" onPress={leave} className="mt-1" />
           ) : null}
         </View>
-      </KeyboardAware>
+      </ScrollView>
+
     </View>
   );
 }

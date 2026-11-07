@@ -148,6 +148,16 @@ The user wants to stay free. Gemini stays primary; **Groq is the fallback** (`fi
 - **Not yet active:** the user hasn't made a Groq key. When they do: put it in the root `.env` → copy to `backend/.env` → `printf %s "$KEY" | npx vercel@65.11.0 env add GROQ_API_KEY production --force --sensitive` → deploy (ask first). Then run the casual-input smoke test against Groq alone to check its Hinglish accuracy.
 - Free-tier notes (Nov 2026; Google no longer publishes numbers, so check AI Studio): Flash-Lite about 500 requests/day; Flash varies. Groq `gpt-oss-120b` about 1,000 requests/day and 200k tokens/day (about 80 Finlyt calls).
 
+## Fixes from driving the phone (2026-11-07, ~10:20)
+
+After a fresh install the user went through onboarding into Import (3 entries imported). Found by screenshots over adb:
+- **"Done" did nothing:** Import opened from onboarding had no screen behind it (no back arrow), so `router.back()` was a no-op. Now `leave()`: from onboarding it does `router.replace("/onboarding?step=plan")` (onboarding reads `step` and starts there), otherwise back if it can, else `/`. Done says "Continue" when opened from onboarding. The skip uses `leave()` too.
+- **Import layout:** "Read the reply" (in a `KeyboardAware` footer) floated mid-screen over step 3 with the keyboard closed: a stale keyboard height after pasting on another Import screen. The button now sits in the page under the paste box, and `KeyboardAware` counts the keyboard only while `KeyboardState` is OPENING, OPEN or CLOSING.
+- **Payback left out:** "Sneha paid back her share of the Barbeque Nation dinner: owes you ₹0". Most likely the payback had no time (so noon) and the dinner a 9 PM time the same day, so it was processed first. Not confirmed: the permission system blocked reading the production rows. Commit now saves expenses and owe entries first, then paybacks and repays. There's a test for exactly this. **Needs a Vercel deploy** (blocked as a production deploy until the user says "deploy"). The user's skipped payback still has to be added: undo and re-import, or say "Sneha paid back 800" on Home.
+- **Import opened on launch, and Done looped:** with Import guarded only by sign-in, a signed-in but not-onboarded launch opened Import, not onboarding (Expo Router lands on the first reachable screen). Done then did `replace("/")`, which redirected back to Import: a loop the user hit. Now `lib/import-gate.ts`: during onboarding, Import is reachable only after "Import from a chat" (`importGate.open()`, then the push on the next tick). Leaving closes it 600 ms after going back to onboarding. The guard is `signedIn && (prefs.onboarded || importOpen)`. **Test the signed-in, not-onboarded launch after any change to the root guards.**
+- Unblocking the user before the fix: `adb shell am start -a android.intent.action.VIEW -d "finlyt:///onboarding" com.finlyt.app`.
+- The import-order fix was deployed at the user's "deploy it" (~10:25).
+
 ## Making the new features findable (2026-11-07, after the deploy)
 
 The user said they could only see Import from AI. Nothing was missing; it was all out of sight:
