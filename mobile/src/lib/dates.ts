@@ -57,9 +57,13 @@ export function dayHeading(day: string): string {
   return label === "Today" || label === "Yesterday" ? `${label} · ${short}` : label;
 }
 
-/** When something happened, with the day always shown: "Today, 10:13 pm", "Thu 5 Nov, 9:40 pm". */
+/** When something happened, with the date always shown: "Today 8 Nov, 10:13 pm", "Thu 5 Nov, 9:40 pm". */
 export function dateTimeLabel(iso: string): string {
-  const day = isoDate(new Date(iso));
-  const label = dayLabel(day);
-  return `${label === "Today" || label === "Yesterday" ? label : label.replace(",", "")}, ${timeLabel(iso)}`;
+  const d = new Date(iso);
+  const label = dayLabel(isoDate(d));
+  const day =
+    label === "Today" || label === "Yesterday"
+      ? `${label} ${d.toLocaleDateString("en-IN", { day: "numeric", month: "short" })}`
+      : label.replace(",", "");
+  return `${day}, ${timeLabel(iso)}`;
 }

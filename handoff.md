@@ -172,7 +172,7 @@ The user: "the splash screen should be the same as the theme currently being use
 
 ## Dates in History and To log (2026-11-07, ~13:35)
 
-- `dates.dayHeading` ("Today · 7 Nov", "Yesterday · 6 Nov", "Thu, 5 Nov") for the day headings in History, a category's entries, the Import preview and Possible duplicates. `dates.dateTimeLabel` ("Today, 10:13 pm", "Thu 5 Nov, 9:40 pm") for To log rows, which can be up to 14 days old.
+- `dates.dayHeading` ("Today · 7 Nov", "Yesterday · 6 Nov", "Thu, 5 Nov") for the day headings in History, a category's entries, the Import preview and Possible duplicates. `dates.dateTimeLabel` ("Today 8 Nov, 10:13 pm", "Yesterday 7 Nov, 8:00 pm", "Thu 5 Nov, 9:40 pm"; the date is always shown since 2026-11-08, at the user's request) for To log rows, which can be up to 14 days old.
 
 ## The logo on every tab, no MCP in Settings, a tappable Plan (2026-11-07, ~13:25)
 
