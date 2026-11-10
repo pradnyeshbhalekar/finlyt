@@ -63,7 +63,7 @@ export function useExpense(id: number) {
   });
 }
 
-/** Refetch everything money-related, e.g. after an SMS sync saved or settled something. */
+/** Refetch everything money-related, e.g. after something was saved or settled. */
 export function useRefreshMoney() {
   const queryClient = useQueryClient();
   return () =>
@@ -188,7 +188,7 @@ export function useSavePlan() {
   });
 }
 
-/** Bank payments from SMS waiting to be explained (last 14 days). */
+/** Bank payments waiting to be explained (last 14 days). */
 export function usePendingTxns() {
   return useQuery({
     queryKey: ["txns"],

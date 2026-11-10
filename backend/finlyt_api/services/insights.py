@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 
 from ..errors import ApiError
 from ..models import Account, BankTxn, Category, Expense, ExpensePayment
-from ..sms_parsers import display_name
+from ..counterparty import display_name
 from ..timeutil import IST, ist_day_bounds, today_ist
 from . import activity, debts, planning, reports
 from .expenses import expense_query

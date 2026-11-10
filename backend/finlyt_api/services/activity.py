@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from ..models import BankTxn, Debt, Due, Expense, Person, Settlement, SpendingPlan
 from ..serializers import expense_json
-from ..sms_parsers import display_name
+from ..counterparty import display_name
 from ..timeutil import to_ist_iso
 from .expenses import expense_query
 

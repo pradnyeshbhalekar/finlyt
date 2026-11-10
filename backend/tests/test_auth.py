@@ -40,7 +40,7 @@ def test_first_sign_in_creates_user_with_defaults(client):
     assert [a["name"] for a in meta["accounts"]] == ["Kotak", "DNS Bank", "Cash"]
     assert [a["is_primary"] for a in meta["accounts"]] == [True, False, False]
     assert len(meta["categories"]) == 15
-    assert {f["bank_code"] for f in meta["sms_filters"]} == {"kotak", "dns"}
+    assert "sms_filters" not in meta
 
     again = sign_in(client)
     assert again["is_new_user"] is False

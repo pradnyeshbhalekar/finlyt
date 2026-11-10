@@ -63,7 +63,7 @@ function detail(e: ImportEntry, accountName: (id: number) => string): string {
     case "expense": {
       const paid = [...new Set(e.payments.map((p) => accountName(p.account_id)))].join(" + ");
       const owed = e.dues.map((d) => `${d.person_name} owes ${formatPaise(d.amount_paise)}`).join(", ");
-      const linked = e.payments.some((p) => p.bank_txn_id) ? "matched to a bank SMS" : null;
+      const linked = e.payments.some((p) => p.bank_txn_id) ? "matched to a bank payment" : null;
       return [paid, owed || null, linked].filter(Boolean).join(" · ");
     }
     default:

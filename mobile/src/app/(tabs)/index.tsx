@@ -13,7 +13,7 @@ import { KeyboardAware } from "@/components/keyboard";
 import { CheckInNudge, SummaryTiles, TodayHero } from "@/components/home-summary";
 import { ProposalCard } from "@/components/proposal-card";
 import { useTabBarHeight } from "@/components/tab-bar";
-import { SmsPermissionCard, ToLog } from "@/components/to-log";
+import { ToLog } from "@/components/to-log";
 import { Icon, Screen, SectionLabel, Txt } from "@/components/ui";
 import { isoDate, moveToDay, startOfMonth } from "@/lib/dates";
 import {
@@ -21,7 +21,6 @@ import {
   hasIssues,
   isUndoable,
   looksLikeQuestion,
-  matchedMessage,
   proposalToCommit,
   savedMessage,
 } from "@/lib/log";
@@ -42,7 +41,6 @@ import {
   useResolveTxn,
   useStats,
 } from "@/lib/queries";
-import { askSmsPermission, smsPermitted, smsSupported, syncSms } from "@/lib/sms";
 import { taps } from "@/lib/motion";
 import { refreshWidgets, scheduleWidgetRefresh } from "@/widgets/refresh";
 import { useTheme } from "@/lib/theme";
@@ -103,34 +101,6 @@ export default function Home() {
   }, []);
 
   const [example] = useState(() => EXAMPLES[Math.floor(Math.random() * EXAMPLES.length)]);
-
-  // Bank SMS: ask once, then pick up new payments whenever Home opens or the app comes back.
-  const [smsAllowed, setSmsAllowed] = useState(smsPermitted);
-  const [smsAsked, setSmsAsked] = useState(false);
-  const filters = meta.data?.sms_filters;
-  useEffect(() => {
-    if (!smsAllowed || !filters) return;
-    const run = () =>
-      void syncSms(filters)
-        .then(async ({ matched }) => {
-          if (matched.length === 0) {
-            await txns.refetch();
-            return;
-          }
-          logDraft.saved({ message: matchedMessage(matched), expenseIds: [], input: "", questions: [], undoable: false });
-          await refreshMoney();
-        })
-        .catch((e: Error) => console.warn("[sms] sync failed", e));
-    run();
-    const sub = AppState.addEventListener("change", (state) => state === "active" && run());
-    return () => sub.remove();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [smsAllowed, filters]);
-
-  async function allowSms() {
-    setSmsAsked(true);
-    setSmsAllowed(await askSmsPermission());
-  }
 
   // The "Saved" toast goes away on its own.
   useEffect(() => {
@@ -234,8 +204,7 @@ export default function Home() {
   function refresh() {
     void Promise.all([day.refetch(), month.refetch(), todays.refetch(), meta.refetch(), plan.refetch()]);
     void refreshMoney(); // the month card and the rest
-    if (smsAllowed && filters) void syncSms(filters).finally(() => txns.refetch());
-    else void txns.refetch();
+    void txns.refetch();
   }
 
   const busy = propose.isPending;
@@ -300,10 +269,6 @@ export default function Home() {
                 }
               />
             </View>
-          ) : null}
-
-          {smsSupported() && !smsAllowed && !smsAsked ? (
-            <SmsPermissionCard onAllow={() => void allowSms()} onDismiss={() => setSmsAsked(true)} />
           ) : null}
 
           <ToLog

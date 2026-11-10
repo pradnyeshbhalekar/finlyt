@@ -24,7 +24,7 @@ type State = {
   saved: Saved | null;
   /** A one-line reply from Gemini when nothing could be saved, e.g. what it couldn't work out. */
   notice: string | null;
-  /** The bank payment (from SMS) the composer is asking about, if one is picked. */
+  /** The bank payment the composer is asking about, if one is picked. */
   txn: BankTxnItem | null;
 };
 

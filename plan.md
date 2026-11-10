@@ -2,7 +2,7 @@
 
 > Resuming? Read [`handoff.md`](handoff.md) first. It has the current state, next steps and gotchas.
 
-Finlyt is an Android app. It reminds me to log spending three times a day and pulls my UPI and bank payments from SMS. I tell it what each payment was for, by voice or text. Gemini turns that into categorised expenses, and the app stores them in Postgres.
+Finlyt is an Android app. It reminds me to log spending three times a day. I tell it what I spent, by voice or text. Gemini turns that into categorised expenses, and the app stores them in Postgres.
 
 ## Decisions
 
@@ -17,10 +17,10 @@ Finlyt is an Android app. It reminds me to log spending three times a day and pu
 | Data | Every table is scoped per user, so the app can be shared later without a schema rewrite |
 | AI | Gemini Flash through `google-genai`, structured JSON output. Models are tried in order until one answers: `gemini-3.5-flash` → `gemini-3.8-flash` → `gemini-2.5-flash` (the free tier often returns 503 "high demand"). `GEMINI_MODEL` overrides the list (comma-separated). If every Gemini model fails, **Groq** (`openai/gpt-oss-120b`, free tier, `GROQ_API_KEY`) answers instead, with the same prompt, schema and checks; text only. Simple notes skip AI entirely (quick parser) |
 | Accounts | Kotak (primary, `X1234`), DNS Bank (Dombivli Nagari Sahakari Bank, `XX5678`) and Cash |
-| Splits | Store the total paid, my share and who owes me. Paybacks are matched from UPI credit SMS |
+| Splits | Store the total paid, my share and who owes me. Paybacks are logged by saying so ("Rahul gave 200 back") |
 | Input | Voice and text. Audio goes straight to Gemini, with no separate speech-to-text step |
 | Reminders | Local notifications at 12:00, 18:00 and 23:00 IST, editable in Settings |
-| Phone | Google Pixel 10a on the latest Android. UPI Lite isn't used, so every UPI payment produces a bank SMS |
+| Phone | Google Pixel 10a on the latest Android |
 
 ## How a day works
 
@@ -93,7 +93,7 @@ All routes are under `/api` and use JSON. Every route needs `Authorization: Bear
 | `GET /api/health` | 1 | Liveness check. Add `?db=1` to also ping the database |
 | `POST /api/auth/google` | 1 | Exchange a Google ID token for a session |
 | `GET /api/auth/me` · `POST /api/auth/logout` | 1 | Get the current user · end the session |
-| `GET /api/meta` | 1 | Accounts, categories, people, SMS filters and the latest imported date |
+| `GET /api/meta` | 1 | Accounts, categories, people and the latest imported date |
 | `GET /api/expenses` | 1 | List expenses. Filters: `from` and `to` (IST dates), `category_id`, `account_id`, `limit`, `offset` |
 | `POST /api/expenses` | 1 | Add an expense manually, with payments and dues |
 | `GET/PATCH/DELETE /api/expenses/:id` | 1 | Read, edit or delete an expense. Payments or dues sent with an edit replace the old ones. Deleting un-links any bank txns |
@@ -103,7 +103,6 @@ All routes are under `/api` and use JSON. Every route needs `Authorization: Bear
 | `GET /api/import/prompt` | 4 | The Claude prompt, built from the current categories and accounts |
 | `POST /api/import/preview` | 4 | Pasted reply in, parsed entries and warnings out. Gemini repairs bad JSON |
 | `POST /api/import/commit` · `DELETE /api/import/:id` | 4 | Save an import as a batch · undo a batch |
-| `POST /api/sms/sync` | 5 | Raw bank SMS in, new pending txns out |
 | `GET /api/txns` · `POST /api/txns/:id/resolve` | 5 | List pending txns · mark one as transfer, ignore or income |
 | `GET /api/dues` · `POST /api/dues/settle` | 6 | What each person owes me · settle by cash or with a credit txn |
 | `POST /api/ask` | — | Ask Finlyt: `{text, thread_id?}` in, answer and `thread_id` out. The chat is saved; older apps can send `messages` instead (not saved) |
@@ -130,11 +129,12 @@ Redesigned on 2026-11-05 to be minimal: Lucide icons, Inter, and no emojis anywh
 - **Check-in** (weekly, on the day and time you pick in onboarding, Plan or Settings): Finlyt asks what's coming up, with answers to tap or your own words. The plan has a usual-day limit and optional bigger days, and you can change the numbers on the card, which shows whether it fits the budget.
 - **Ask Finlyt**: a chat about your money. If a question is unclear, Finlyt asks back with answers to tap. "Where did my money go?" comes with a report card (full report screen behind it) and follow-ups to tap. It remembers income, commitments and notes you tell it (the **What Finlyt remembers** screen shows them) and uses them for "am I saving enough?". Past chats sit behind the header's history icon (grouped by day, searchable, long-press to delete, kept 10 days), next to New chat. Long-press a message to copy it.
 - **Settings**: profile; Appearance (Auto / Light / Dark / Ink); Check before saving; Add an entry by hand; Check-in times and a test reminder; Sign out.
-- Later: pending SMS payments at the top of Home ("To log"); tapping one asks "What was Sharma Stores?". Import from Claude.
 
 **Themes** (from the logo canvas): Light (white, ink text), Dark (black) and Ink (navy `#0B1033`). Auto follows the phone's light/dark setting. They're built on semantic Tailwind colours backed by CSS variables (`bg-bg`, `bg-surface`, `text-fg`, `text-muted`, `text-accent`…) set on the root view with NativeWind `vars()` (`src/lib/theme.ts`). Preferences (theme, check before saving, onboarded) are stored on the device in SecureStore (`finlyt.prefs`).
 
-## SMS pipeline (phase 5)
+## SMS pipeline (phase 5): removed 2026-11-10
+
+> **Removed at the user's request.** The app no longer asks for `READ_SMS` or reads any messages: `modules/sms-reader`, `src/lib/sms.ts`, the Home permission card and the onboarding step are gone, and so are `POST /api/sms/sync`, the parsers (`sms_parsers.py`, `banks.py`), `sms_filters` in `/api/meta` and the SMS auto-matching of paybacks (`debts.auto_repay`/`auto_payback`, `people.match_person`). The `sms_messages`/`bank_txns` tables and existing rows were kept (no migration), so `GET /api/txns`, `POST /api/txns/:id/resolve` (now `routes/txns.py`, `services/txns.py`), the "To log" list and links to old bank txns still work for data already there. `display_name` moved to `finlyt_api/counterparty.py`. The section below is history.
 
 **On the phone:** a local Expo module, `mobile/modules/sms-reader` (Kotlin), queries `content://sms/inbox` for messages newer than the sync cursor. It keeps a message only if both of these are true:
 
@@ -311,7 +311,7 @@ Done on 2026-11-05: project `finlyt-api` (Hobby, team "pradnyeshbhalekar's proje
 ### Phone
 
 1. Turn on Developer options and USB debugging, then connect the phone to the Mac.
-2. Install the app over USB with adb, not from a downloaded APK. In India, Play Protect blocks sideloaded apps that ask for SMS access.
+2. Install the app over USB with adb, not from a downloaded APK. (Play Protect used to block it while the app asked for SMS access; that permission is gone now.)
 3. Set Finlyt's battery usage to Unrestricted.
 
 ## Gotchas
@@ -334,7 +334,7 @@ finlyt/
 └── mobile/               Expo app (Android), package com.finlyt.app
     ├── src/app/          Expo Router screens
     ├── src/lib/          API client, auth, notifications, money
-    └── modules/sms-reader/   local Expo module (phase 5)
+    └── modules/splash-theme/ local Expo module (launch screen theme)
 ```
 
 ## Local development
@@ -352,7 +352,7 @@ finlyt/
 - [x] **3. Gemini logging**: propose and commit endpoints ✅, paybacks ✅, 33 backend tests ✅, live Gemini check with text and an AAC voice note ✅, Log screen with recorder ✅, Review screen ✅, voice note → review → save works on the Pixel ✅
 - [x] **3b. Weekly check-in planning**: monthly budget, planned items, daily limit and buffer; chat with Finlyt; Home strip; weekly reminder (deployed). 2026-11-07: usual + bigger days, check-in day of your choice, answers to tap, editable plan card (built, not deployed yet)
 - [x] **4. Import from an AI chat** (Claude, ChatGPT, Gemini): prompt, preview with duplicates and SMS links, batch save, undo; onboarding step (optional, with a skip) and Settings (deployed 2026-11-07)
-- [ ] **5. SMS auto-fetch**: Kotlin module ✅, Kotak and DNS parsers with tests ✅, pending inbox ("To log") ✅, auto-linking ✅, transfers/ignore ✅. Still to do: deploy the backend, install the build, try it with real SMS (milestone 2)
+- [—] **5. SMS auto-fetch**: **removed 2026-11-10** at the user's request (see "SMS pipeline"). Existing bank txns and the "To log" list remain
 - [ ] **6. Owed to me**: payback matching, charts, release APK
 
 ## Waiting on

@@ -221,19 +221,6 @@ class CheckInIn(_In):
     weekday: int = Field(ge=0, le=6)
 
 
-class SmsIn(_In):
-    """One bank SMS from the phone. Non-bank messages never get uploaded."""
-
-    device_id: str | None = Field(default=None, max_length=64)
-    sender: str = Field(min_length=1, max_length=64)
-    body: str = Field(min_length=1, max_length=2000)
-    received_at: datetime
-
-
-class SmsSyncIn(_In):
-    messages: list[SmsIn] = Field(default_factory=list, max_length=500)
-
-
 class TxnResolveIn(_In):
     status: Literal["transfer", "ignored", "income", "pending"]
 

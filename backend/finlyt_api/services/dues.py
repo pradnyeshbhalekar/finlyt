@@ -104,5 +104,5 @@ def settle(s: Session, user_id: int, data: SettlementIn) -> list[Settlement]:
     s.flush()
     if txn is not None:
         sync_txn_statuses(s, [txn.id])
-        learn_alias(person, txn.counterparty)  # their next UPI payback is matched by itself
+        learn_alias(person, txn.counterparty)  # remember their UPI ID
     return created

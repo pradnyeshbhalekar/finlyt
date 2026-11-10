@@ -1,6 +1,8 @@
 # Finlyt: handoff
 
-Paused on 2026-11-07: month reports, money memory, Import from AI, bigger days and the chosen check-in day are all deployed, pushed and on the phone. Bigger days and the chosen check-in day are deployed. Before that, 2026-11-06 and 2026-11-05. This file is the checkpoint to resume from. **`plan.md` holds the design, decisions and phase checklist. This file holds the current state, what to do next, and things learned the hard way.**
+Paused on 2026-11-07: month reports, money memory, Import from AI, bigger days and the chosen check-in day are all deployed, pushed and on the phone. Bigger days and the chosen check-in day are deployed. Before that, 2026-11-06 and 2026-11-05. This file is the checkpoint to resume from.
+
+**2026-11-10: SMS reading was removed** at the user's request (branch `ccr-0478f642-6c372n`, not deployed, no new APK yet). No `READ_SMS`, no `sms-reader` module, no `/api/sms/sync`, no SMS parsers or SMS auto-matching. Tables and old bank txns are kept; see plan.md → "SMS pipeline". To ship: deploy the backend (an old app build would get 404 from `/api/sms/sync` and log a warning, nothing worse) and rebuild the APK so the permission leaves the manifest (`expo prebuild --clean` first, since `android/` is generated). Older notes below that mention SMS are history. Backend tests: 135 pass; `test_goals.py::test_a_goal_with_money_put_towards_it` already failed before this change. **`plan.md` holds the design, decisions and phase checklist. This file holds the current state, what to do next, and things learned the hard way.**
 
 ## Where things stand
 

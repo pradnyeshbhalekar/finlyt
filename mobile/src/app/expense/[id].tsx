@@ -105,7 +105,7 @@ export default function ExpenseDetail() {
             {split ? `Your share of ${formatPaise(entry.total_paise)} · ` : ""}
             {day}, {timeLabel(entry.occurred_at)}
           </Txt>
-          {/* Logged on the wrong day (forgot yesterday's)? Move it. Bank SMS entries keep the bank's date. */}
+          {/* Logged on the wrong day (forgot yesterday's)? Move it. Entries linked to a bank payment keep the bank's date. */}
           {!entry.payments.some((p) => p.bank_txn_id) ? (
             changingDay ? (
               <View className="mt-3">
@@ -136,7 +136,7 @@ export default function ExpenseDetail() {
               <Row
                 key={p.id}
                 title={accounts.get(p.account_id)?.name ?? "Account"}
-                subtitle={p.bank_txn_id ? "Matched to a bank SMS" : undefined}
+                subtitle={p.bank_txn_id ? "Matched to a bank payment" : undefined}
                 trailing={
                   <View className="flex-row items-center gap-1.5">
                     {p.bank_txn_id ? <Icon icon={Check} size={16} tone="accent" /> : null}

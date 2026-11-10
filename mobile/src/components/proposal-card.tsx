@@ -27,7 +27,7 @@ export function ProposalCard({
   onSave: () => void;
   onEdit: () => void;
   onDiscard: () => void;
-  /** Move the entries that aren't from a bank SMS to another day (keeping their time). */
+  /** Move the entries that aren't linked to a bank payment to another day (keeping their time). */
   onMoveDay?: (day: string) => void;
 }) {
   const count =
@@ -38,7 +38,7 @@ export function ProposalCard({
     (proposal.debts?.length ?? 0) +
     (proposal.repayments?.length ?? 0);
   const txnLabel = (id: number) => proposal.txns.find((t) => t.id === id);
-  // The day can be changed for entries that aren't from a bank SMS (those keep the bank's time).
+  // The day can be changed for entries that aren't linked to a bank payment (those keep the bank's time).
   const movable = proposal.expenses.find((e) => !e.payments.some((p) => p.bank_txn_id));
 
   return (

@@ -1,5 +1,5 @@
-// Owed: who owes you, and whom you owe, with what each amount was for. Paybacks by UPI are
-// matched from your bank SMS by themselves; for cash, just say it on Home ("Rahul gave 200 back").
+// Owed: who owes you, and whom you owe, with what each amount was for. To settle up, just say it
+// on Home ("Rahul gave 200 back").
 import { ActivityIndicator, ScrollView, View } from "react-native";
 import Animated, { FadeInDown } from "react-native-reanimated";
 
@@ -110,8 +110,7 @@ export default function Owed() {
       ) : null}
 
       <Txt tone="muted" className="mt-8 text-sm leading-5">
-        UPI paybacks either way are matched from your bank SMS by themselves. For cash, just say it on
-        Home, like “Rahul gave 200 back” or “paid Aaditya his 200”.
+        To settle up, just say it on Home, like “Rahul gave 200 back” or “paid Aaditya his 200”.
       </Txt>
     </ScrollView>
   );

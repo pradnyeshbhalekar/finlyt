@@ -15,13 +15,6 @@ export type Category = { id: number; name: string; emoji: string; color: string 
 
 export type Person = { id: number; name: string };
 
-export type SmsFilter = {
-  account_id: number;
-  bank_code: string;
-  sender_patterns: string[];
-  body_markers: string[];
-};
-
 export type Meta = {
   user: User;
   timezone: string;
@@ -29,7 +22,6 @@ export type Meta = {
   accounts: Account[];
   categories: Category[];
   people: Person[];
-  sms_filters: SmsFilter[];
   latest_import_at: string | null;
 };
 
@@ -231,9 +223,9 @@ export type PlanTurn = {
   model: string;
 };
 
-// ── Phase 5: bank SMS ────────────────────────────────────────────────────────
+// ── Bank transactions ────────────────────────────────────────────────────────
 
-/** A bank payment picked up from SMS, waiting to be explained. */
+/** A bank payment waiting to be explained. */
 export type BankTxnItem = {
   id: number;
   account_id: number;
@@ -270,9 +262,6 @@ export type Balances = {
   owed_to_me: { person_id: number; name: string; amount_paise: number; items: { description: string; amount_paise: number }[] }[];
   i_owe: { person_id: number; name: string; amount_paise: number; items: { description: string; amount_paise: number }[] }[];
 };
-
-/** An SMS payment Finlyt matched by itself: me paying someone back, or them paying me. */
-export type SmsMatch = { kind: "repaid" | "payback"; person: string; amount_paise: number; txn_id: number };
 
 // ── History: everything, newest first ────────────────────────────────────────
 

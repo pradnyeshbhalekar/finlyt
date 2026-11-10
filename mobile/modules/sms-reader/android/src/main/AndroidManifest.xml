@@ -1,4 +1,0 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
-  <!-- Read the SMS inbox. Finlyt only uploads messages from the user's banks (filtered in JS). -->
-  <uses-permission android:name="android.permission.READ_SMS" />
-</manifest>

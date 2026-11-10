@@ -1,9 +1,7 @@
-"""Money I owe others, and settling both directions from bank SMS.
+"""Money I owe others.
 
-- A debt (they paid for me) is recorded but isn't spending yet. Paying it back creates an
-  expense linked to the payment, so the money is counted once, when it leaves my account.
-- A UPI debit to someone I owe exactly that much (one debt, or all of them together) is matched
-  automatically. So is a UPI credit from someone who owes me (their dues are settled, oldest first).
+A debt (they paid for me) is recorded but isn't spending yet. Paying it back creates an expense
+linked to the payment, so the money is counted once, when it leaves my account.
 """
 
 from __future__ import annotations
@@ -16,11 +14,11 @@ from sqlalchemy.orm import Session
 from ..errors import ApiError
 from ..models import Account, BankTxn, Debt, Expense, Person
 from ..money import rupees
-from ..schemas import DebtIn, ExpenseIn, PaymentIn, RepayIn, SettlementIn
+from ..schemas import DebtIn, ExpenseIn, PaymentIn, RepayIn
 from ..timeutil import ensure_aware, now_utc
-from .dues import open_dues, outstanding, settle
+from .dues import outstanding
 from .expenses import create_expense
-from .people import find_or_create_person, learn_alias, match_person
+from .people import find_or_create_person, learn_alias
 
 
 def open_debts(s: Session, user_id: int, person_id: int) -> list[Debt]:
@@ -119,43 +117,8 @@ def repay_from_request(s: Session, user_id: int, data: RepayIn, note: str | None
         when = ensure_aware(data.paid_at) if data.paid_at else now_utc()
     expense = repay(s, user_id, person, data.amount_paise, account_id=account_id, txn=txn, when=when, note=note)
     if txn is not None:
-        learn_alias(person, txn.counterparty)  # the next payment to this UPI ID is matched by itself
+        learn_alias(person, txn.counterparty)  # remember their UPI ID
     return expense
-
-
-def auto_repay(s: Session, user_id: int, txn: BankTxn) -> dict | None:
-    """A UPI debit to someone I owe exactly that much: pay the debt off with it."""
-    person = match_person(s, user_id, txn.counterparty)
-    if person is None or not open_debts(s, user_id, person.id):
-        return None
-    try:
-        repay(
-            s,
-            user_id,
-            person,
-            txn.amount_paise,
-            account_id=txn.account_id,
-            txn=txn,
-            when=txn.occurred_at,
-            note="Matched from bank SMS",
-        )
-    except ApiError:
-        return None
-    learn_alias(person, txn.counterparty)
-    return {"kind": "repaid", "person": person.name, "amount_paise": txn.amount_paise, "txn_id": txn.id}
-
-
-def auto_payback(s: Session, user_id: int, txn: BankTxn) -> dict | None:
-    """A UPI credit from someone who owes me (no more than they owe): settle their dues with it."""
-    person = match_person(s, user_id, txn.counterparty)
-    if person is None:
-        return None
-    owed = sum(outstanding(d) for d in open_dues(s, user_id, person.id))
-    if owed == 0 or txn.amount_paise > owed:
-        return None
-    settle(s, user_id, SettlementIn(person_id=person.id, amount_paise=txn.amount_paise, bank_txn_id=txn.id))
-    learn_alias(person, txn.counterparty)
-    return {"kind": "payback", "person": person.name, "amount_paise": txn.amount_paise, "txn_id": txn.id}
 
 
 def balances(s: Session, user_id: int) -> dict:

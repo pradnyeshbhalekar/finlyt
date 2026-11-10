@@ -1,6 +1,5 @@
 // Turning Gemini's proposal into what /api/log/commit saves.
-import { formatPaise } from "./money";
-import type { LogCommit, Proposal, SmsMatch } from "./types";
+import type { LogCommit, Proposal } from "./types";
 
 export function proposalToCommit(p: Proposal, noteRaw: string | null): LogCommit {
   return {
@@ -90,13 +89,4 @@ const QUESTION_START =
 export function looksLikeQuestion(text: string): boolean {
   const t = text.trim();
   return t.endsWith("?") || (QUESTION_START.test(t) && !/\d/.test(t.split(/\s+/)[0] ?? ""));
-}
-
-export function matchedMessage(matches: SmsMatch[]): string {
-  const parts = matches.map((m) =>
-    m.kind === "repaid"
-      ? `paid back ${m.person} ${formatPaise(m.amount_paise)}`
-      : `${m.person} paid you back ${formatPaise(m.amount_paise)}`,
-  );
-  return `From your bank SMS: ${parts.join(", ")}`;
 }

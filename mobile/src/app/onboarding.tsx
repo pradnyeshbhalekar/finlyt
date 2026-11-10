@@ -1,5 +1,5 @@
 // First run after signing in, one thing at a time: what Finlyt does, check-in times, how to save
-// what you tell it, bank SMS, importing from an AI chat, and the weekly planning check-in (day and
+// what you tell it, importing from an AI chat, and the weekly planning check-in (day and
 // time). The coin sits at the top of every step, and each step's pieces come in one after another.
 import { router, useLocalSearchParams } from "expo-router";
 import {
@@ -36,17 +36,15 @@ import {
   type ReminderTime,
 } from "@/lib/notifications";
 import { usePrefs } from "@/lib/prefs";
-import { askSmsPermission, smsPermitted, smsSupported } from "@/lib/sms";
 import { BRAND } from "@/lib/theme";
 
-type Step = "welcome" | "checkins" | "saving" | "sms" | "import" | "plan";
+type Step = "welcome" | "checkins" | "saving" | "import" | "plan";
 
 /** The coin at the top of each step, in a mood that suits it. */
 const MOODS: Record<Step, Mood> = {
   welcome: "happy",
   checkins: "default",
   saving: "thinking",
-  sms: "default",
   import: "happy",
   plan: "default",
 };
@@ -128,14 +126,7 @@ export default function Onboarding() {
   const insets = useSafeAreaInsets();
   const prefs = usePrefs();
   const { user } = useAuth();
-  const steps: Step[] = [
-    "welcome",
-    "checkins",
-    "saving",
-    ...(smsSupported() ? (["sms"] as Step[]) : []),
-    "import",
-    "plan",
-  ];
+  const steps: Step[] = ["welcome", "checkins", "saving", "import", "plan"];
   const { step: startAt } = useLocalSearchParams<{ step?: string }>();
   const [index, setIndex] = useState(() => Math.max(steps.indexOf(startAt as Step), 0));
   const [times, setTimes] = useState<ReminderTime[]>(DEFAULT_REMINDERS);
@@ -160,11 +151,6 @@ export default function Onboarding() {
     }
   }
 
-  async function allowSms() {
-    if (!smsPermitted()) await askSmsPermission();
-    next();
-  }
-
   let body: ReactNode;
   let actions: ReactNode;
   if (step === "welcome") {
@@ -186,7 +172,7 @@ export default function Onboarding() {
             <Feature icon={Mic} title="Plain words" text="Type or say “chai 40 cash, auto 120” and it's sorted." />
           </In>
           <In i={5}>
-            <Feature icon={MessageSquareText} title="Payments found for you" text="Your bank's UPI SMS show up, ready to explain." />
+            <Feature icon={ClipboardPaste} title="Bring your history" text="Tracked spending with an AI chat? Paste it in and it's all here." />
           </In>
           <In i={6}>
             <Feature icon={Target} title="A daily limit" text="A short chat on Sundays turns your budget into a daily number." />
@@ -244,51 +230,6 @@ export default function Onboarding() {
       </>
     );
     actions = <Button label="Continue" onPress={next} />;
-  } else if (step === "sms") {
-    body = (
-      <>
-        <In i={1}>
-          <Title>Pick up bank payments?</Title>
-        </In>
-        <In i={2}>
-          <Lead>
-            I can read your Kotak and DNS Bank SMS and list each UPI payment for you to explain. Other messages
-            never leave your phone.
-          </Lead>
-        </In>
-        <In i={3}>
-          <View className="mt-8 rounded-3xl bg-surface px-4 py-3.5">
-            <View className="flex-row items-center">
-              <View className="flex-1">
-                <Txt weight="medium" className="text-base">
-                  Zomato
-                </Txt>
-                <Txt tone="muted" className="text-sm">
-                  1:12 PM · UPI · Kotak
-                </Txt>
-              </View>
-              <Txt weight="semibold" className="text-base">
-                ₹450
-              </Txt>
-              <View className="ml-3 h-2 w-2 rounded-full bg-brand" />
-            </View>
-          </View>
-        </In>
-        <In i={4}>
-          <View className="mt-3 self-start rounded-full border border-line px-4 py-2">
-            <Txt tone="muted" className="text-sm">
-              What was Zomato? “lunch with Rahul, he owes 200”
-            </Txt>
-          </View>
-        </In>
-      </>
-    );
-    actions = (
-      <View className="flex-row gap-3">
-        <Button label="Not now" variant="secondary" onPress={next} className="flex-1" />
-        <Button label="Allow" onPress={() => void allowSms()} className="flex-1" />
-      </View>
-    );
   } else if (step === "import") {
     body = (
       <>
