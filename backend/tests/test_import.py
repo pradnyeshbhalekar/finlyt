@@ -238,3 +238,91 @@ def test_a_same_day_payback_finds_the_dinner_it_pays_back(client, me):
     assert result["skipped"] == []
     assert result["saved"] == {"expense": 1, "payback": 1, "owe": 0, "repay": 0}
     assert client.get("/api/people/balances").get_json()["owed_to_me"] == []
+
+
+# ── The chat's plan ──────────────────────────────────────────────────────────
+
+PLAN = {
+    "month": "2026-11",
+    "monthly_budget": 20000,
+    "weekly_budget": None,
+    "daily_limit": 600,
+    "big_day_limit": 1200,
+    "big_days_per_week": 1,
+    "planned_items": [{"description": "Rent", "amount": 8000, "date": "2026-11-05", "category": "Rent"}],
+    "notes": "A tight month",
+}
+
+
+def reply_with(entries, plan) -> str:
+    return "```json\n" + json.dumps({"version": 1, "entries": entries, "plan": plan}) + "\n```"
+
+
+def plan_body(plan: dict) -> dict:
+    """What the app sends back for the plan: the PlanIn fields."""
+    fields = ("monthly_budget_paise", "daily_limit_paise", "big_day_limit_paise", "big_days_per_week", "notes")
+    items = [{k: i[k] for k in ("description", "amount_paise", "due_on", "category_id")} for i in plan["planned_items"]]
+    return {**{k: plan[k] for k in fields}, "planned_items": items}
+
+
+@pytest.fixture
+def plan_day(monkeypatch):
+    monkeypatch.setattr("finlyt_api.routes.plan.today_ist", lambda: date(2026, 11, 7))
+
+
+def test_this_months_plan_comes_in_with_the_entries(client, me, plan_day):
+    data = preview(client, reply_with(ENTRIES[:2], PLAN))
+    plan = data["plan"]
+    assert data["plan_note"] is None
+    assert plan["month"] == "2026-11" and plan["replaces"] is False
+    assert (plan["monthly_budget_paise"], plan["daily_limit_paise"]) == (20000_00, 600_00)
+    assert (plan["big_day_limit_paise"], plan["big_days_per_week"]) == (1200_00, 1)
+    [rent] = plan["planned_items"]
+    assert (rent["description"], rent["amount_paise"], rent["due_on"]) == ("Rent", 8000_00, "2026-11-05")
+    assert rent["category_id"] == me["cat"]["Rent"]
+
+    resp = client.post("/api/import/commit", json={"entries": keep(data), "plan": plan_body(plan)})
+    assert resp.status_code == 201, resp.get_json()
+    result = resp.get_json()
+    assert result["imported"] == 2 and result["plan_saved"] is True
+
+    status = client.get("/api/plan").get_json()
+    assert status["budget_paise"] == 20000_00
+    assert status["plan"]["daily_limit_paise"] == 600_00
+    assert [i["description"] for i in status["planned_items"]] == ["Rent"]
+
+    # A second import sees there's a plan already, and undoing the first one leaves the plan alone.
+    assert preview(client, reply_with(ENTRIES[:1], PLAN))["plan"]["replaces"] is True
+    assert client.delete(f"/api/import/batches/{result['batch_id']}").status_code == 204
+    assert client.get("/api/plan").get_json()["budget_paise"] == 20000_00
+
+
+def test_a_weekly_budget_becomes_a_daily_limit_and_can_come_in_alone(client, me, plan_day):
+    data = preview(client, reply_with([], {"weekly_budget": 3500, "planned_items": []}))
+    assert data["entries"] == [] and data["summary"]["importable"] == 0
+    plan = data["plan"]
+    assert plan["weekly_budget_paise"] == 3500_00 and plan["daily_limit_paise"] == 500_00
+    # No monthly budget: ₹500 a day for the 24 days from 7 to 30 November.
+    assert plan["monthly_budget_paise"] == 500_00 * 24
+
+    resp = client.post("/api/import/commit", json={"entries": [], "plan": plan_body(plan)})
+    assert resp.status_code == 201, resp.get_json()
+    assert resp.get_json()["batch_id"] is None and resp.get_json()["imported"] == 0
+    assert client.get("/api/import/batches").get_json()["items"] == []
+    assert client.get("/api/plan").get_json()["plan"]["daily_limit_paise"] == 500_00
+
+
+def test_another_months_plan_or_no_budget_stays_out(client, me):
+    data = preview(client, reply_with(ENTRIES[:1], {**PLAN, "month": "2026-10"}))
+    assert data["plan"] is None and "October 2026" in data["plan_note"]
+
+    data = preview(client, reply_with(ENTRIES[:1], {"month": "2026-11", "planned_items": []}))
+    assert data["plan"] is None and "no budget" in data["plan_note"]
+
+    assert preview(client, reply(ENTRIES[:1]))["plan"] is None  # no plan at all: nothing to say
+    assert client.post("/api/import/commit", json={"entries": []}).status_code == 422
+
+
+def test_the_prompt_asks_for_this_months_plan(client, me):
+    prompt = client.get("/api/import/prompt").get_json()["prompt"]
+    assert '"plan": null' in prompt and "Saturday 07 November 2026" in prompt and '"month": "2026-11"' in prompt

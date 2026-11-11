@@ -2,10 +2,12 @@
 // 1. Pick the chat and copy the prompt (it lists your categories and accounts).
 // 2. Paste it into that conversation, then paste the reply back here.
 // 3. Check the preview (already-logged entries come unticked) and import. One tap undoes it.
+// If the chat had a budget or plan for this month or week, it comes too, as a card to keep or
+// untick; importing it replaces this month's plan (undoing the import leaves the plan).
 // Opened from onboarding and from Settings.
 import * as Clipboard from "expo-clipboard";
 import { router, useLocalSearchParams } from "expo-router";
-import { Check, ClipboardPaste, Copy, ExternalLink, Undo2 } from "lucide-react-native";
+import { Check, ClipboardPaste, Copy, ExternalLink, Target, Undo2 } from "lucide-react-native";
 import { useMemo, useState } from "react";
 import { ActivityIndicator, Linking, Pressable, ScrollView, SectionList, TextInput, View } from "react-native";
 import Animated, { FadeInDown } from "react-native-reanimated";
@@ -19,7 +21,7 @@ import { formatPaise } from "@/lib/money";
 import { fetchImportPrompt, useImportBatches, useImportCommit, useImportPreview, useMeta, useUndoImport } from "@/lib/queries";
 import { importGate } from "@/lib/import-gate";
 import { fonts, useTheme } from "@/lib/theme";
-import type { ImportEntry, ImportPreview, ImportResult, ImportSource } from "@/lib/types";
+import type { ImportedPlan, ImportEntry, ImportPreview, ImportResult, ImportSource } from "@/lib/types";
 import { confirmDelete as askDelete } from "@/lib/ask-sheet";
 
 const SOURCES: { value: ImportSource; label: string; url: string | null }[] = [
@@ -71,6 +73,99 @@ function detail(e: ImportEntry, accountName: (id: number) => string): string {
   }
 }
 
+function Checkbox({ on }: { on: boolean }) {
+  return (
+    <View className={`h-6 w-6 items-center justify-center rounded-md ${on ? "bg-brand" : "border-2 border-line"}`}>
+      {on ? <Check size={14} color="#FFFFFF" strokeWidth={3} /> : null}
+    </View>
+  );
+}
+
+function monthName(month: string): string {
+  const [y, m] = month.split("-").map(Number);
+  return new Date(y, m - 1, 1).toLocaleDateString("en-IN", { month: "long" });
+}
+
+/** The chat's plan for this month, to keep (ticked) or leave out. */
+function PlanFromChat({
+  plan,
+  on,
+  onToggle,
+}: {
+  plan: ImportedPlan;
+  on: boolean;
+  onToggle: () => void;
+}) {
+  const figures: [string, string][] = [
+    ["Budget", formatPaise(plan.monthly_budget_paise)],
+    ["Usual day", formatPaise(plan.daily_limit_paise)],
+  ];
+  if (plan.big_day_limit_paise && plan.big_days_per_week) {
+    figures.push([`${plan.big_days_per_week} bigger ${plan.big_days_per_week === 1 ? "day" : "days"} a week`, formatPaise(plan.big_day_limit_paise)]);
+  }
+  return (
+    <Pressable
+      onPress={onToggle}
+      accessibilityRole="checkbox"
+      accessibilityState={{ checked: on }}
+      className="mt-5 rounded-3xl bg-surface p-4 active:opacity-80"
+    >
+      <View className="flex-row items-center gap-3">
+        <Checkbox on={on} />
+        <View className="flex-1">
+          <Txt weight="semibold" className="text-base">
+            {monthName(plan.month)}&apos;s plan
+          </Txt>
+          <Txt tone="muted" className="text-xs">
+            {plan.replaces ? "Replaces the plan you have for this month" : "From the chat, for this month"}
+          </Txt>
+        </View>
+        <Icon icon={Target} size={20} tone="accent" />
+      </View>
+      <View className="mt-4 flex-row flex-wrap gap-x-6 gap-y-3" style={{ opacity: on ? 1 : 0.55 }}>
+        {figures.map(([label, value]) => (
+          <View key={label}>
+            <Txt tone="muted" className="text-xs">
+              {label}
+            </Txt>
+            <Txt weight="semibold" className="mt-0.5 text-lg">
+              {value}
+            </Txt>
+          </View>
+        ))}
+      </View>
+      {plan.weekly_budget_paise ? (
+        <Txt tone="muted" className="mt-2 text-xs">
+          From {formatPaise(plan.weekly_budget_paise)} a week
+        </Txt>
+      ) : null}
+      {plan.planned_items.length > 0 ? (
+        <View className="mt-3" style={{ opacity: on ? 1 : 0.55 }}>
+          <Txt tone="muted" className="text-xs">
+            Set aside
+          </Txt>
+          {plan.planned_items.map((item, i) => (
+            <View key={i} className="mt-1 flex-row justify-between">
+              <Txt className="text-sm">
+                {item.description}
+                {item.due_on ? ` · ${shortDay(item.due_on)}` : ""}
+              </Txt>
+              <Txt weight="medium" className="text-sm">
+                {formatPaise(item.amount_paise)}
+              </Txt>
+            </View>
+          ))}
+        </View>
+      ) : null}
+      {plan.issues.map((issue, i) => (
+        <Txt key={i} tone="warn" className="mt-2 text-xs">
+          {issue}
+        </Txt>
+      ))}
+    </Pressable>
+  );
+}
+
 export default function ImportScreen() {
   const { from } = useLocalSearchParams<{ from?: string }>();
   const fromOnboarding = from === "onboarding";
@@ -90,6 +185,7 @@ export default function ImportScreen() {
   const [text, setText] = useState("");
   const [preview, setPreview] = useState<ImportPreview | null>(null);
   const [include, setInclude] = useState<Record<number, boolean>>({});
+  const [takePlan, setTakePlan] = useState(true);
   const [result, setResult] = useState<ImportResult | null>(null);
   const [undone, setUndone] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -130,25 +226,27 @@ export default function ImportScreen() {
       const data = await read.mutateAsync({ text, source });
       setPreview(data);
       setInclude(Object.fromEntries(data.entries.map((e) => [e.index, e.include])));
+      setTakePlan(!!data.plan);
     } catch (e) {
       setError((e as Error).message);
     }
   }
 
   const chosen = preview ? preview.entries.filter((e) => e.kind !== "skip" && include[e.index]) : [];
+  const plan = preview?.plan && takePlan ? preview.plan : null;
 
   async function importChosen() {
     if (!preview) return;
     setError(null);
     try {
-      setResult(await save.mutateAsync({ entries: chosen, source, rawText: text }));
+      setResult(await save.mutateAsync({ entries: chosen, plan, source, rawText: text }));
     } catch (e) {
       setError((e as Error).message);
     }
   }
 
   async function undoImport() {
-    if (!result) return;
+    if (!result?.batch_id) return;
     setError(null);
     try {
       await undo.mutateAsync(result.batch_id);
@@ -160,6 +258,14 @@ export default function ImportScreen() {
 
   // ── Done ──
   if (result) {
+    const entries = `${result.imported} ${result.imported === 1 ? "entry" : "entries"}`;
+    const title = undone
+      ? "Import undone"
+      : result.plan_saved
+        ? result.imported
+          ? `Imported ${entries} and your plan`
+          : "Your plan is in"
+        : `Imported ${entries}`;
     return (
       <View className="flex-1 bg-bg px-6 pt-8">
         <Animated.View entering={appear(0)}>
@@ -167,12 +273,19 @@ export default function ImportScreen() {
         </Animated.View>
         <Animated.View entering={appear(1)}>
           <Txt weight="bold" className="mt-6 text-3xl" style={{ letterSpacing: -0.5 }}>
-            {undone ? "Import undone" : `Imported ${result.imported} ${result.imported === 1 ? "entry" : "entries"}`}
+            {title}
           </Txt>
           <Txt tone="muted" className="mt-2 text-base leading-6">
             {undone
-              ? "Everything from that import is gone, and any bank payments it matched are back in To log."
-              : "They're in your history now, and Finlyt's check-ins will use them to see how your weeks go."}
+              ? `Everything from that import is gone, and any bank payments it matched are back in To log.${result.plan_saved ? " The plan stays; change it any time in Plan." : ""}`
+              : [
+                  result.imported
+                    ? "They're in your history now, and Finlyt's check-ins will use them to see how your weeks go."
+                    : null,
+                  result.plan_saved ? "This month's plan is set from the chat. See it, or change it, in Plan." : null,
+                ]
+                  .filter(Boolean)
+                  .join(" ")}
           </Txt>
         </Animated.View>
         {!undone && result.skipped.length > 0 ? (
@@ -193,8 +306,14 @@ export default function ImportScreen() {
         <View className="flex-1" />
         <View className="gap-3" style={{ paddingBottom: Math.max(insets.bottom, 16) }}>
           <Button label={fromOnboarding ? "Continue" : "Done"} onPress={leave} />
-          {!undone ? (
-            <Button label="Undo this import" icon={Undo2} variant="ghost" onPress={() => void undoImport()} loading={undo.isPending} />
+          {!undone && result.batch_id ? (
+            <Button
+              label={result.plan_saved ? "Undo the entries" : "Undo this import"}
+              icon={Undo2}
+              variant="ghost"
+              onPress={() => void undoImport()}
+              loading={undo.isPending}
+            />
           ) : null}
         </View>
       </View>
@@ -220,12 +339,24 @@ export default function ImportScreen() {
           ListHeaderComponent={
             <View className="pt-4">
               <Txt weight="bold" className="text-3xl" style={{ letterSpacing: -0.5 }}>
-                {summary.importable} {summary.importable === 1 ? "entry" : "entries"}
+                {summary.importable === 0 && preview.plan
+                  ? "This month's plan"
+                  : `${summary.importable} ${summary.importable === 1 ? "entry" : "entries"}`}
               </Txt>
-              <Txt tone="muted" className="mt-1 text-base">
-                {summary.first_day ? `${shortDay(summary.first_day)} to ${shortDay(summary.last_day)} · ` : ""}
-                {formatPaise(summary.spent_paise)} spent
-              </Txt>
+              {summary.importable > 0 ? (
+                <Txt tone="muted" className="mt-1 text-base">
+                  {summary.first_day ? `${shortDay(summary.first_day)} to ${shortDay(summary.last_day)} · ` : ""}
+                  {formatPaise(summary.spent_paise)} spent
+                </Txt>
+              ) : null}
+              {preview.plan ? (
+                <PlanFromChat plan={preview.plan} on={takePlan} onToggle={() => setTakePlan((v) => !v)} />
+              ) : null}
+              {preview.plan_note ? (
+                <Txt tone="muted" className="mt-3 text-sm leading-5">
+                  {preview.plan_note}
+                </Txt>
+              ) : null}
               {preview.repaired ? (
                 <Txt tone="warn" className="mt-3 text-sm leading-5">
                   The reply wasn&apos;t quite in the format, so Finlyt tidied it up. Check the entries below.
@@ -260,11 +391,7 @@ export default function ImportScreen() {
                 accessibilityState={{ checked: on }}
                 className="flex-row items-center gap-3 rounded-2xl px-1 py-2.5 active:bg-surface"
               >
-                <View
-                  className={`h-6 w-6 items-center justify-center rounded-md ${on ? "bg-brand" : "border-2 border-line"}`}
-                >
-                  {on ? <Check size={14} color="#FFFFFF" strokeWidth={3} /> : null}
-                </View>
+                <Checkbox on={on} />
                 <CategoryBadge name={e.category_id != null ? categories.get(e.category_id) : null} size={34} />
                 <View className="flex-1" style={{ opacity: on ? 1 : 0.55 }}>
                   <Txt weight="medium" numberOfLines={1}>
@@ -307,11 +434,17 @@ export default function ImportScreen() {
             </Txt>
           ) : null}
           <Button
-            label={chosen.length ? `Import ${chosen.length} ${chosen.length === 1 ? "entry" : "entries"}` : "Nothing ticked"}
+            label={
+              chosen.length
+                ? `Import ${chosen.length} ${chosen.length === 1 ? "entry" : "entries"}${plan ? " and the plan" : ""}`
+                : plan
+                  ? "Import the plan"
+                  : "Nothing ticked"
+            }
             icon={Check}
             onPress={() => void importChosen()}
             loading={save.isPending}
-            disabled={chosen.length === 0}
+            disabled={chosen.length === 0 && !plan}
           />
           <Button label="Paste a different reply" variant="ghost" onPress={() => setPreview(null)} className="mt-1" />
         </View>
@@ -334,7 +467,8 @@ export default function ImportScreen() {
             Bring in your old chats
           </Txt>
           <Txt tone="muted" className="mt-2 text-base leading-6">
-            Tracked your spending with an AI before? Finlyt can read it all in, splits and paybacks included.
+            Tracked your spending with an AI before? Finlyt can read it all in, splits, paybacks and this month&apos;s
+            plan included.
           </Txt>
         </Animated.View>
 

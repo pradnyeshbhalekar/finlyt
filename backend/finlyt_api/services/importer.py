@@ -9,6 +9,11 @@
    repayments, so paybacks find their dues whatever times the chat gave. A payback or repayment
    that doesn't fit what's owed is skipped rather than failing the import.
 5. Undoing deletes the batch and everything it made.
+
+If the chat had a budget or spending plan for the current month or week, the reply carries it
+too. The preview checks it the way a plan from the check-in chat is checked (a weekly budget
+becomes a daily limit; only this month's plan counts), and saving it replaces this month's plan.
+Undoing an import leaves the plan as it is.
 """
 
 from __future__ import annotations
@@ -16,6 +21,7 @@ from __future__ import annotations
 import json
 import re
 from datetime import date, datetime, time
+from types import SimpleNamespace
 from typing import Any
 
 from pydantic import ValidationError
@@ -23,12 +29,12 @@ from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from ..errors import ApiError
-from ..gemini import GImport, GImportEntry, get_import_fixer
+from ..gemini import GImport, GImportEntry, GImportPlan, get_import_fixer
 from ..models import Account, BankTxn, Category, Debt, Expense, ImportBatch, Settlement
 from ..money import rupees, to_paise
 from ..schemas import DebtIn, DueIn, ExpenseIn, ImportCommitIn, ImportEntryIn, RepayIn, SettlementIn
 from ..timeutil import IST, ist_day_bounds, today_ist
-from . import debts
+from . import debts, planning
 from .dues import settle
 from .expenses import create_expense, delete_expense, sync_txn_statuses
 
@@ -58,7 +64,8 @@ Reply with ONLY one JSON code block, nothing before or after it, in exactly this
       "person": null,
       "notes": ""
     }}
-  ]
+  ],
+  "plan": null
 }}
 ```
 
@@ -83,6 +90,16 @@ Half cash, half GPay from {example_method} → [{{"method": "{example_method}", 
 this expense (empty list if nobody).
 - category: one of {categories}.
 - notes: anything else useful, otherwise "".
+- plan: today is {today}. If we set a budget or a spending plan for this month or this week, put \
+the latest one here, in this shape:
+  {{"month": "{month}", "monthly_budget": 20000, "weekly_budget": null, "daily_limit": 650, \
+"big_day_limit": null, "big_days_per_week": 0, "planned_items": [{{"description": "Rent", \
+"amount": 8000, "date": null, "category": "Rent"}}], "notes": ""}}
+  monthly_budget, weekly_budget, daily_limit and big_day_limit are rupees as plain numbers, or null \
+if we didn't agree on one. big_days_per_week: how many days a week get the bigger limit (0 if \
+none). planned_items: big spends I set aside for this month (rent, a trip, a bill), each with a \
+date if it has one. If we never talked about a budget or plan for this month or week, leave \
+"plan": null. Never make one up.
 """
 
 FIX_PROMPT = """\
@@ -90,7 +107,9 @@ This is a reply from an AI chat that was asked to list someone's expenses as JSO
 format, but it didn't follow the format exactly (or added text around it). Turn it into the \
 format: one entry per item it lists, with the same dates, amounts, people and payment methods. \
 Don't invent entries or amounts. Dates are YYYY-MM-DD, amounts are rupees as plain numbers. \
-Types are expense, payback, owe, repay, income or transfer.
+Types are expense, payback, owe, repay, income or transfer. If it also gives a budget or \
+spending plan for the current month or week, put that in plan (amounts in rupees); otherwise \
+plan is null. Don't invent a plan.
 """
 
 
@@ -105,10 +124,13 @@ def build_prompt(s: Session, user_id: int) -> str:
     )
     banks = [a.name for a in accounts if a.kind == "bank"]
     methods = [f'"{name}"' for name in banks] + ['"cash"', '"upi" (bank unknown)', '"card"', '"unknown"']
+    today = today_ist()
     return PROMPT.format(
         example_method=banks[0] if banks else "upi",
         methods=", ".join(methods),
         categories=", ".join(categories) or "Other",
+        today=today.strftime("%A %d %B %Y"),
+        month=today.strftime("%Y-%m"),
     )
 
 
@@ -139,7 +161,7 @@ def parse_reply(text: str) -> GImport | None:
             parsed = GImport.model_validate(data)
         except ValidationError:
             continue
-        if parsed.entries:
+        if parsed.entries or parsed.plan is not None:
             return parsed
     return None
 
@@ -155,9 +177,58 @@ def read_reply(text: str) -> tuple[GImport, bool]:
         "one on or before today (so this year, or last year if this year's would be in the future)."
     )
     fixed, _ = get_import_fixer()(system=system, text=text[:200_000])
-    if not fixed.entries:
+    if not fixed.entries and fixed.plan is None:
         raise ApiError(422, "nothing_found", "Couldn't find any expenses in that. Paste the whole reply.")
     return fixed, True
+
+
+# ── The plan ─────────────────────────────────────────────────────────────────
+
+
+def _plan_month(text: str | None) -> date | None:
+    try:
+        year, month = (int(x) for x in (text or "").strip()[:7].split("-"))
+        return date(year, month, 1)
+    except ValueError:
+        return None
+
+
+def plan_preview(s: Session, user_id: int, g: GImportPlan | None, today: date) -> tuple[dict[str, Any] | None, str | None]:
+    """The chat's plan, checked and worked out like one from the check-in chat, or a line saying
+    why it can't come in."""
+    if g is None:
+        return None, None
+    this_month = planning.month_start(today)
+    month = _plan_month(g.month)
+    if month is not None and month != this_month:
+        return None, f"The plan in that chat is for {month:%B %Y}, so it isn't brought in. Make this month's in Plan."
+    n = planning.load_month(s, user_id, today)
+    weekly = to_paise(g.weekly_budget) if g.weekly_budget and g.weekly_budget > 0 else None
+    daily = g.daily_limit if g.daily_limit and g.daily_limit > 0 else (weekly / 100 / 7 if weekly else None)
+    budget = g.monthly_budget if g.monthly_budget and g.monthly_budget > 0 else None
+    if budget is None and n.budget is None and daily:
+        # Only a weekly or daily figure: the month is what's spent so far, that much a day to its
+        # end, and the planned spends on top.
+        items = sum(to_paise(i.amount) for i in g.planned_items if i.amount > 0)
+        budget = (n.spent + to_paise(daily) * n.days_left + items) / 100
+    if budget is None and n.budget is None:
+        return None, "That chat has no budget or limit for this month, so there's no plan to bring in."
+    turn = SimpleNamespace(
+        monthly_budget=budget,
+        daily_limit=daily,
+        big_day_limit=g.big_day_limit,
+        big_days_per_week=g.big_days_per_week,
+        planned_items=[i for i in g.planned_items if i.description.strip()],
+        summary=g.notes or "",
+    )
+    try:
+        plan = planning.resolve_plan(s, user_id, today, turn)
+    except ApiError as e:
+        return None, e.message
+    plan["month"] = this_month.strftime("%Y-%m")
+    plan["weekly_budget_paise"] = weekly
+    plan["replaces"] = n.budget is not None or n.plan_on(today) is not None
+    return plan, None
 
 
 # ── The preview ──────────────────────────────────────────────────────────────
@@ -337,10 +408,13 @@ def preview(s: Session, user_id: int, text: str, source: str) -> dict[str, Any]:
 
     included = [x for x in entries if x["include"]]
     days = sorted({x["day"] for x in kept})
+    plan, plan_note = plan_preview(s, user_id, doc.plan, today)
     return {
         "source": source,
         "repaired": repaired,
         "entries": entries,
+        "plan": plan,
+        "plan_note": plan_note,
         "summary": {
             "found": len(entries),
             "importable": len(kept),
@@ -404,13 +478,18 @@ def _save_one(s: Session, user_id: int, batch: ImportBatch, e: ImportEntryIn) ->
 
 
 def commit(s: Session, user_id: int, data: ImportCommitIn) -> dict[str, Any]:
-    """Save the kept entries as one batch. Each entry is its own savepoint, so one that doesn't
-    fit (paying back more than is owed) is reported and skipped, and the rest still go in."""
+    """Save the kept entries as one batch, and the chat's plan if it came along. Each entry is
+    its own savepoint, so one that doesn't fit (paying back more than is owed) is reported and
+    skipped, and the rest still go in."""
+    if data.plan is not None:
+        planning.commit_plan(s, user_id, today_ist(), data.plan)
+    saved: dict[str, int] = {"expense": 0, "payback": 0, "owe": 0, "repay": 0}
+    skipped: list[dict[str, Any]] = []
+    if not data.entries:
+        return {"batch_id": None, "imported": 0, "saved": saved, "skipped": skipped, "plan_saved": True}
     batch = ImportBatch(user_id=user_id, source=data.source, raw_text=data.raw_text or "", entry_count=0)
     s.add(batch)
     s.flush()
-    saved: dict[str, int] = {"expense": 0, "payback": 0, "owe": 0, "repay": 0}
-    skipped: list[dict[str, Any]] = []
     # Expenses and money owed first, then paybacks and repayments: a payback often has no time
     # (so it's saved at noon) while the dinner it pays back was at 9 PM the same day, and it
     # can only settle dues that already exist.
@@ -427,9 +506,19 @@ def commit(s: Session, user_id: int, data: ImportCommitIn) -> dict[str, Any]:
             skipped.append({"index": i, "description": entry.description, "reason": e.message})
     batch.entry_count = sum(saved.values())
     if batch.entry_count == 0:
-        raise ApiError(422, "nothing_imported", skipped[0]["reason"] if skipped else "Nothing to import")
+        if data.plan is None:
+            raise ApiError(422, "nothing_imported", skipped[0]["reason"] if skipped else "Nothing to import")
+        s.delete(batch)  # only the plan went in
+        s.flush()
+        return {"batch_id": None, "imported": 0, "saved": saved, "skipped": skipped, "plan_saved": True}
     s.flush()
-    return {"batch_id": batch.id, "imported": batch.entry_count, "saved": saved, "skipped": skipped}
+    return {
+        "batch_id": batch.id,
+        "imported": batch.entry_count,
+        "saved": saved,
+        "skipped": skipped,
+        "plan_saved": data.plan is not None,
+    }
 
 
 def list_batches(s: Session, user_id: int) -> list[dict[str, Any]]:

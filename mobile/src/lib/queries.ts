@@ -164,26 +164,27 @@ export function usePlanChat() {
   });
 }
 
+/** A plan as POST /api/plan (and an import with a plan) takes it. */
+function planBody(plan: ProposedPlan) {
+  return {
+    monthly_budget_paise: plan.monthly_budget_paise,
+    daily_limit_paise: plan.daily_limit_paise,
+    big_day_limit_paise: plan.big_days_per_week > 0 ? plan.big_day_limit_paise : null,
+    big_days_per_week: plan.big_day_limit_paise ? plan.big_days_per_week : 0,
+    planned_items: plan.planned_items.map((i) => ({
+      description: i.description,
+      amount_paise: i.amount_paise,
+      due_on: i.due_on,
+      category_id: i.category_id,
+    })),
+    notes: plan.notes,
+  };
+}
+
 export function useSavePlan() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (plan: ProposedPlan) =>
-      api<PlanStatus>("/api/plan", {
-        method: "POST",
-        body: {
-          monthly_budget_paise: plan.monthly_budget_paise,
-          daily_limit_paise: plan.daily_limit_paise,
-          big_day_limit_paise: plan.big_days_per_week > 0 ? plan.big_day_limit_paise : null,
-          big_days_per_week: plan.big_day_limit_paise ? plan.big_days_per_week : 0,
-          planned_items: plan.planned_items.map((i) => ({
-            description: i.description,
-            amount_paise: i.amount_paise,
-            due_on: i.due_on,
-            category_id: i.category_id,
-          })),
-          notes: plan.notes,
-        },
-      }),
+    mutationFn: (plan: ProposedPlan) => api<PlanStatus>("/api/plan", { method: "POST", body: planBody(plan) }),
     onSuccess: (status) => queryClient.setQueryData(["plan"], status),
   });
 }
@@ -292,18 +293,31 @@ export function useImportCommit() {
   const refresh = useRefreshMoney();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ entries, source, rawText }: { entries: ImportEntry[]; source: ImportSource; rawText: string }) =>
+    mutationFn: ({
+      entries,
+      plan,
+      source,
+      rawText,
+    }: {
+      entries: ImportEntry[];
+      /** The chat's plan for this month, when it's being brought in too. */
+      plan: ProposedPlan | null;
+      source: ImportSource;
+      rawText: string;
+    }) =>
       api<ImportResult>("/api/import/commit", {
         method: "POST",
         body: {
           source,
           raw_text: rawText,
           entries: entries.map((e) => Object.fromEntries(ENTRY_FIELDS.map((k) => [k, e[k]]))),
+          ...(plan ? { plan: planBody(plan) } : {}),
         },
       }),
-    onSuccess: () => {
+    onSuccess: (result) => {
       void refresh();
       void queryClient.invalidateQueries({ queryKey: ["imports"] });
+      if (result.plan_saved) void queryClient.invalidateQueries({ queryKey: ["plan"] });
     },
   });
 }

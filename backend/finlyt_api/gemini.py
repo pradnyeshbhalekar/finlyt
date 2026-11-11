@@ -432,9 +432,32 @@ class GImportEntry(BaseModel):
     notes: str | None = ""
 
 
+class GImportPlannedItem(BaseModel):
+    """A bigger spend planned this month, from the chat. Lenient like the entries."""
+
+    description: str = ""
+    amount: float = Field(description="Rupees")
+    date: str | None = Field(default=None, description='"YYYY-MM-DD" if known, else null')
+    category: str = "Other"
+
+
+class GImportPlan(BaseModel):
+    """The budget or spending plan for the current month or week, if the chat had one."""
+
+    month: str | None = Field(default=None, description='The month it is for, "YYYY-MM"')
+    monthly_budget: float | None = Field(default=None, description="The month's budget in rupees, if set")
+    weekly_budget: float | None = Field(default=None, description="A weekly budget in rupees, if that's how it was set")
+    daily_limit: float | None = Field(default=None, description="A daily limit in rupees, if set")
+    big_day_limit: float | None = Field(default=None, description="A bigger day's limit in rupees, if any")
+    big_days_per_week: int | None = Field(default=None, description="How many bigger days a week, if any")
+    planned_items: list[GImportPlannedItem] = Field(default_factory=list)
+    notes: str | None = ""
+
+
 class GImport(BaseModel):
     version: int = 1
-    entries: list[GImportEntry]
+    entries: list[GImportEntry] = Field(default_factory=list)
+    plan: GImportPlan | None = Field(default=None, description="This month's or week's plan, or null if there wasn't one")
 
 
 class ImportFixer(Protocol):

@@ -347,8 +347,8 @@ export default function Onboarding() {
         </In>
         <In i={2}>
           <Lead>
-            If you&apos;ve been telling Claude, ChatGPT or Gemini what you spent, Finlyt can bring it all in, splits
-            and paybacks included. Your weekly check-ins get better with it.
+            If you&apos;ve been telling Claude, ChatGPT or Gemini what you spent, Finlyt can bring it all in: splits,
+            paybacks, and the budget or plan you made for this month. Your weekly check-ins get better with it.
           </Lead>
         </In>
         <In i={3}>

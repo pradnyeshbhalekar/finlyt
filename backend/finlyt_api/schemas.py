@@ -266,9 +266,18 @@ class ImportEntryIn(_In):
 
 
 class ImportCommitIn(_In):
+    """The kept entries, and the plan from the chat if it's being brought in too."""
+
     source: ImportSource = "other"
     raw_text: str | None = Field(default=None, max_length=1_000_000)
-    entries: list[ImportEntryIn] = Field(min_length=1, max_length=3000)
+    entries: list[ImportEntryIn] = Field(default_factory=list, max_length=3000)
+    plan: PlanIn | None = None
+
+    @model_validator(mode="after")
+    def _something(self) -> ImportCommitIn:
+        if not self.entries and self.plan is None:
+            raise ValueError("Nothing to import")
+        return self
 
 
 # ── What Finlyt remembers ────────────────────────────────────────────────────

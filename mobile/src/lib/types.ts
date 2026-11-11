@@ -353,11 +353,24 @@ export type ImportEntry = {
   include: boolean;
 };
 
+/** The chat's budget or plan for this month (a weekly budget comes as a daily limit). */
+export type ImportedPlan = ProposedPlan & {
+  /** "YYYY-MM": always this month. */
+  month: string;
+  weekly_budget_paise: number | null;
+  /** This month already has a budget or plan, which this one replaces. */
+  replaces: boolean;
+};
+
 export type ImportPreview = {
   source: ImportSource;
   /** The reply wasn't in the format, so the AI tidied it up. */
   repaired: boolean;
   entries: ImportEntry[];
+  /** Older servers leave these out. */
+  plan?: ImportedPlan | null;
+  /** Why the chat's plan isn't coming in (another month, no budget), if it had one. */
+  plan_note?: string | null;
   summary: {
     found: number;
     importable: number;
@@ -370,8 +383,10 @@ export type ImportPreview = {
 };
 
 export type ImportResult = {
-  batch_id: number;
+  /** Null when only the plan came in. */
+  batch_id: number | null;
   imported: number;
+  plan_saved?: boolean;
   saved: { expense: number; payback: number; owe: number; repay: number };
   skipped: { index: number; description: string; reason: string }[];
 };

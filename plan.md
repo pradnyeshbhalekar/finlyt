@@ -101,8 +101,8 @@ All routes are under `/api` and use JSON. Every route needs `Authorization: Bear
 | `POST /api/log/propose` | 3 | Audio and/or text plus pending txn ids in, Gemini proposal and transcript out. Nothing is saved |
 | `POST /api/log/commit` | 3 | Save a reviewed proposal in one database transaction |
 | `GET /api/import/prompt` | 4 | The Claude prompt, built from the current categories and accounts |
-| `POST /api/import/preview` | 4 | Pasted reply in, parsed entries and warnings out. Gemini repairs bad JSON |
-| `POST /api/import/commit` · `DELETE /api/import/:id` | 4 | Save an import as a batch · undo a batch |
+| `POST /api/import/preview` | 4 | Pasted reply in, parsed entries and warnings out, plus `plan` (the chat's budget or plan for this month or week, checked like a check-in plan) or `plan_note` (why it can't come in). Gemini repairs bad JSON |
+| `POST /api/import/commit` · `DELETE /api/import/:id` | 4 | Save an import as a batch, and `plan` (a `POST /api/plan` body) if it came along; entries can be empty when only the plan is imported · undo a batch (the plan stays) |
 | `GET /api/txns` · `POST /api/txns/:id/resolve` | 5 | List pending txns · mark one as transfer, ignore or income |
 | `GET /api/dues` · `POST /api/dues/settle` | 6 | What each person owes me · settle by cash or with a credit txn |
 | `POST /api/ask` | — | Ask Finlyt: `{text, thread_id?}` in, answer and `thread_id` out. The chat is saved; older apps can send `messages` instead (not saved) |
