@@ -64,7 +64,7 @@ export default function Review() {
   if (!pending) {
     return (
       <View className="flex-1 items-center justify-center bg-bg p-8">
-        <Coin size={56} mood="sleepy" variant="bare" />
+        <Coin size={56} mood="default" variant="bare" />
         <Txt tone="muted" className="mt-3 text-center">
           Nothing to check. Log something on Home first.
         </Txt>

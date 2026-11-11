@@ -196,7 +196,7 @@ export default function History() {
           <ActivityIndicator className="mt-10" color={colors.muted} />
         ) : (
           <View className="mt-12 items-center">
-            <Coin size={56} variant="bare" mood="sleepy" />
+            <Coin size={56} variant="bare" mood="default" />
             <Txt tone="muted" className="mt-3">
               Nothing here yet.
             </Txt>

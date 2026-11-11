@@ -5,7 +5,7 @@ import { vars } from "nativewind";
 import { createContext, useContext } from "react";
 
 export type ThemeName = "light" | "dark" | "ink";
-/** What the user picked. "auto" follows the phone: Light, or Ink in dark mode. */
+/** What the user picked. "auto" follows the phone: Light, or Dark (black) in dark mode. */
 export type ThemeMode = "auto" | ThemeName;
 
 export type Palette = {
@@ -100,9 +100,9 @@ export function themeVars(p: Palette) {
 export type Theme = { name: ThemeName; colors: Palette; isDark: boolean };
 
 export function resolveTheme(mode: ThemeMode, system: "light" | "dark" | null | undefined): Theme {
-  // Auto follows the phone like finlyt.onrender.com does: Light by day, Ink (navy) in dark mode.
-  // Pick "Dark" explicitly for pure black.
-  const name: ThemeName = mode === "auto" ? (system === "dark" ? "ink" : "light") : mode;
+  // Auto follows the phone, like finlyt.onrender.com does: Light in light mode, Dark (black) in
+  // dark mode. Pick "Ink" explicitly for navy.
+  const name: ThemeName = mode === "auto" ? (system === "dark" ? "dark" : "light") : mode;
   return { name, colors: palettes[name], isDark: name !== "light" };
 }
 

@@ -14,6 +14,7 @@ import { CheckInNudge, SummaryTiles, TodayHero } from "@/components/home-summary
 import { ProposalCard } from "@/components/proposal-card";
 import { useTabBarHeight } from "@/components/tab-bar";
 import { ToLog } from "@/components/to-log";
+import { TourTarget } from "@/components/tour";
 import { Icon, Screen, SectionLabel, Txt } from "@/components/ui";
 import { isoDate, moveToDay, startOfMonth } from "@/lib/dates";
 import {
@@ -41,7 +42,6 @@ import {
   useResolveTxn,
   useStats,
 } from "@/lib/queries";
-import { taps } from "@/lib/motion";
 import { refreshWidgets, scheduleWidgetRefresh } from "@/widgets/refresh";
 import { useTheme } from "@/lib/theme";
 import type { Expense, Proposal } from "@/lib/types";
@@ -86,20 +86,6 @@ export default function Home() {
     return () => sub.remove();
   }, []);
 
-  const [awake, setAwake] = useState(false);
-  useEffect(() => {
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const unsubscribe = taps.subscribe(() => {
-      setAwake(true);
-      clearTimeout(timer);
-      timer = setTimeout(() => setAwake(false), 6000);
-    });
-    return () => {
-      unsubscribe();
-      clearTimeout(timer);
-    };
-  }, []);
-
   const [example] = useState(() => EXAMPLES[Math.floor(Math.random() * EXAMPLES.length)]);
 
   // The "Saved" toast goes away on its own.
@@ -123,10 +109,8 @@ export default function Home() {
   const iOwe = (balances.data?.i_owe ?? []).reduce((sum, r) => sum + r.amount_paise, 0);
   const { user } = useAuth();
   const tabBarHeight = useTabBarHeight();
-  // The coin dozes while nothing is logged today. A tap anywhere wakes it (and it jumps, see
-  // HeaderLogo); it nods off again a few seconds later if there's still nothing.
-  const nothingLogged = todays.data !== undefined && items.length === 0;
-  const restingMood: Mood = nothingLogged && !awake ? "sleepy" : "default";
+  // At rest the coin is lively: its normal face, then a smile, over and over (see useLivelyMood).
+  const restingMood: Mood = "default";
 
   async function save(proposal: Proposal, words: string) {
     const body = proposalToCommit(proposal, words.slice(0, 4000) || null);
@@ -219,7 +203,9 @@ export default function Home() {
       <View className="flex-1">
         <View className="flex-row items-center justify-between pl-5 pr-3 pt-2">
           <HeaderLogo height={30} mood={headerMood} splashTarget />
-          <AvatarButton user={user} onPress={() => router.push("/settings")} />
+          <TourTarget id="avatar">
+            <AvatarButton user={user} onPress={() => router.push("/settings")} />
+          </TourTarget>
         </View>
 
         <ScrollView
@@ -230,13 +216,17 @@ export default function Home() {
             <RefreshControl refreshing={todays.isRefetching} onRefresh={refresh} tintColor={colors.muted} />
           }
         >
-          <TodayHero spentPaise={day.data?.spend_paise ?? 0} plan={plan.data} />
-          <SummaryTiles
-            monthPaise={month.data?.spend_paise ?? 0}
-            budgetPaise={plan.data?.budget_paise ?? null}
-            owedToMePaise={owed}
-            iOwePaise={iOwe}
-          />
+          <TourTarget id="today">
+            <TodayHero spentPaise={day.data?.spend_paise ?? 0} plan={plan.data} />
+          </TourTarget>
+          <TourTarget id="tiles">
+            <SummaryTiles
+              monthPaise={month.data?.spend_paise ?? 0}
+              budgetPaise={plan.data?.budget_paise ?? null}
+              owedToMePaise={owed}
+              iOwePaise={iOwe}
+            />
+          </TourTarget>
           <CheckInNudge plan={plan.data} />
 
           {busy ? (
@@ -282,9 +272,9 @@ export default function Home() {
             }}
           />
 
-          <View className="mt-8 flex-row items-center justify-between">
+          <TourTarget id="logged" className="mt-8 flex-row items-center justify-between">
             <SectionLabel>Logged today</SectionLabel>
-          </View>
+          </TourTarget>
           <View className="-mx-3 mt-2">
             {items.map((e) => (
               <ExpenseRow
@@ -371,6 +361,7 @@ export default function Home() {
             </View>
           ) : null}
 
+          <TourTarget id="composer">
           <Composer
             busy={busy}
             placeholder={txn ? `What was ${txn.name}?` : "What did you spend on?"}
@@ -380,6 +371,7 @@ export default function Home() {
             launch={compose === "voice" || compose === "type" ? compose : undefined}
             onLaunched={() => router.setParams({ compose: undefined })}
           />
+          </TourTarget>
           </View>
         </KeyboardAware>
       </View>

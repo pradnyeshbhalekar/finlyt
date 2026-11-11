@@ -9,6 +9,7 @@ import Animated, { FadeInDown } from "react-native-reanimated";
 import { Coin } from "@/components/brand";
 import { CategoryBadge } from "@/components/category-icon";
 import { Group, GroupItem, GroupLabel } from "@/components/group";
+import { TourTarget } from "@/components/tour";
 import { formatClock, TimePickerSheet } from "@/components/time-picker";
 import { Button, Icon, Sheet, Txt } from "@/components/ui";
 import { formatPaise } from "@/lib/money";
@@ -161,6 +162,7 @@ export default function PlanOverview() {
     return (
       <View className="flex-1 bg-bg">
         <ScrollView contentContainerClassName="px-8 pb-8 pt-10">
+          <TourTarget id="plan-main">
           <Animated.View entering={appear(0)}>
             <Coin size={64} variant="bare" />
           </Animated.View>
@@ -176,6 +178,7 @@ export default function PlanOverview() {
                 : `Tell Finlyt your budget for the month and what's coming up. You'll get limits that fit how you spend, and a short check-in every ${WEEKDAYS[checkIn.weekday]}.`}
             </Txt>
           </Animated.View>
+          </TourTarget>
           <Animated.View entering={appear(3)} className="mt-8">
             {links}
           </Animated.View>
@@ -195,6 +198,7 @@ export default function PlanOverview() {
   return (
     <View className="flex-1 bg-bg">
       <ScrollView contentContainerClassName="px-5 pb-8 pt-2">
+        <TourTarget id="plan-main">
         {st.plan ? (
           <Animated.View entering={appear(0)}>
             <Pressable
@@ -254,6 +258,7 @@ export default function PlanOverview() {
             />
           ) : null}
         </Animated.View>
+        </TourTarget>
 
         {st.planned_items.length > 0 ? (
           <Animated.View entering={appear(2)}>

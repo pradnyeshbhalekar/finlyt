@@ -135,7 +135,7 @@ function Today({ d, c }: { d: WidgetData; c: Colors }) {
 
 function CheckIn({ d, c }: { d: WidgetData; c: Colors }) {
   const next = nextCheckIn(d.reminders);
-  const dot = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8" width="8" height="8"><circle cx="4" cy="4" r="4" fill="${d.toLog > 0 ? BRAND : c.track}"/></svg>`;
+  const dot = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8" width="8" height="8"><circle cx="4" cy="4" r="4" fill="${d.toLog > 0 || d.todaySpent === 0 ? BRAND : c.track}"/></svg>`;
   return (
     <Card c={c} uri={HOME}>
       <Label c={c} text={next?.tomorrow ? "Tomorrow" : "Next check-in"} />
@@ -144,7 +144,7 @@ function CheckIn({ d, c }: { d: WidgetData; c: Colors }) {
         <FlexWidget style={{ flexDirection: "row", alignItems: "center", marginTop: 2 }}>
           <SvgWidget svg={dot} style={{ width: 8, height: 8, marginRight: 7 }} />
           <TextWidget
-            text={d.toLog > 0 ? `${d.toLog} to log` : "All logged"}
+            text={d.toLog > 0 ? `${d.toLog} to log` : d.todaySpent > 0 ? "Logged today" : "Nothing logged yet"}
             style={{ fontSize: 14, fontFamily: F.regular, color: c.muted }}
           />
         </FlexWidget>
@@ -262,7 +262,7 @@ export function renderFinlytWidget(
   d: WidgetData,
   size: { width: number; height: number },
 ): WidgetRepresentation {
-  if (d.theme === "auto") return { light: draw(name, d, "light", size), dark: draw(name, d, "ink", size) };
+  if (d.theme === "auto") return { light: draw(name, d, "light", size), dark: draw(name, d, "dark", size) };
   return draw(name, d, d.theme, size);
 }
 

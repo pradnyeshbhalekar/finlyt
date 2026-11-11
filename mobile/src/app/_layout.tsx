@@ -16,6 +16,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useColorScheme, View, type GestureResponderEvent } from "react-native";
 
 import { AskSheetHost } from "@/components/ask-sheet-host";
+import { TourHost } from "@/components/tour";
 import { Splash } from "@/components/splash";
 import { AuthProvider, useAuth } from "@/lib/auth";
 import { useImportGate } from "@/lib/import-gate";
@@ -192,6 +193,7 @@ function RootNavigator({ fontsLoaded }: { fontsLoaded: boolean }) {
         <Stack.Screen name="sign-in" />
       </Stack.Protected>
     </Stack>
+    <TourHost />
     <AskSheetHost />
     {ready && !introDone ? <Splash onDone={() => setIntroDone(true)} /> : null}
     </>

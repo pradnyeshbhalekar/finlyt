@@ -7,6 +7,7 @@ import { Pressable, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AskIcon } from "@/components/ask-icon";
+import { TourTarget } from "@/components/tour";
 import { Txt, type IconType } from "@/components/ui";
 import { useTheme } from "@/lib/theme";
 
@@ -44,7 +45,7 @@ export function TabBar({ state, emitter, navigateToTab }: BottomTabBarProps) {
           const event = emitter.emit({ type: "tabPress", target: route.key, canPreventDefault: true });
           if (!focused && !event.defaultPrevented) navigateToTab(route.key);
         }
-        return (
+        const button = (
           <Pressable
             key={route.key}
             onPress={onPress}
@@ -60,6 +61,14 @@ export function TabBar({ state, emitter, navigateToTab }: BottomTabBarProps) {
               {tab.label}
             </Txt>
           </Pressable>
+        );
+        // The tour points at the History tab.
+        return route.name === "history" ? (
+          <TourTarget key={route.key} id="tab-history" style={{ flex: 1 }}>
+            {button}
+          </TourTarget>
+        ) : (
+          button
         );
       })}
     </View>

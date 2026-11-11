@@ -14,6 +14,7 @@ import Animated, {
 } from "react-native-reanimated";
 import Svg, { Ellipse, G, Path, Rect } from "react-native-svg";
 
+import { useLivelyMood } from "@/lib/lively";
 import { EASE, sample, TAP_BOUNCE, TAP_BOUNCE_MS, taps } from "@/lib/motion";
 import { splashStore, useSplashPlaying } from "@/lib/splash-store";
 import { BRAND, BRAND_EDGE, INK, TINT, useTheme, WHITE } from "@/lib/theme";
@@ -87,20 +88,21 @@ export function Coin({
   variant?: "badge" | "bare";
 }) {
   const { isDark: dark } = useTheme();
+  const face = useLivelyMood(mood); // normal, then a smile, over and over
   if (variant === "badge") {
     return (
       <Svg width={size} height={size} viewBox="0 0 100 100" accessibilityElementsHidden>
         <Rect width={100} height={100} rx={24} fill={colors.primary} />
-        <CoinShape face={colors.white} rim={colors.tint} ring={colors.tint} eyes={colors.primary} mood={mood} />
+        <CoinShape face={colors.white} rim={colors.tint} ring={colors.tint} eyes={colors.primary} mood={face} />
       </Svg>
     );
   }
   return (
     <Svg width={size} height={size} viewBox="18 18 64 64" accessibilityElementsHidden>
       {dark ? (
-        <CoinShape face={colors.white} rim={colors.tint} ring={colors.tint} eyes={colors.primary} mood={mood} />
+        <CoinShape face={colors.white} rim={colors.tint} ring={colors.tint} eyes={colors.primary} mood={face} />
       ) : (
-        <CoinShape face={colors.primary} rim={colors.primaryEdge} ring={colors.tint} eyes={colors.white} mood={mood} />
+        <CoinShape face={colors.primary} rim={colors.primaryEdge} ring={colors.tint} eyes={colors.white} mood={face} />
       )}
     </Svg>
   );
@@ -218,8 +220,9 @@ export function WordmarkSvg({ height, dark }: { height: number; dark: boolean })
 }
 
 /**
- * Home's header logo. The coin reacts: it bounces and smiles (happy) when something is logged,
- * glances up and bobs while Gemini reads (thinking), and dozes late at night (sleepy).
+ * The header logo on every tab and on sign-in. At rest the coin is always alive: its normal face,
+ * then a smile with a little hop, over and over. It also reacts: a bigger bounce and smile when
+ * something is logged (happy), and it glances up and bobs while Gemini reads (thinking).
  * With `splashTarget`, it reports its position for the launch splash to land on, and stays hidden
  * until the splash's copy has landed exactly on top of it.
  */
@@ -233,6 +236,7 @@ export function HeaderLogo({
   splashTarget?: boolean;
 }) {
   const { isDark: dark } = useTheme();
+  const face = useLivelyMood(mood);
   const splashPlaying = useSplashPlaying();
   const box = useRef<ComponentRef<typeof View>>(null);
   const scale = useSharedValue(1);
@@ -277,6 +281,21 @@ export function HeaderLogo({
   // Any tap in the app makes the coin bounce, like the header logo on finlyt.onrender.com.
   // It's its own layer, so it can overlap a mood animation without cancelling it.
   const reduceMotion = useReducedMotion();
+
+  // The resting smile comes with a small hop and tilt.
+  const idleSmile = mood === "default" && face === "happy";
+  useEffect(() => {
+    if (!idleSmile || reduceMotion) return;
+    scale.set(withSequence(withSpring(1.1, { damping: 7, stiffness: 240 }), withSpring(1, { damping: 10 })));
+    rotate.set(
+      withSequence(
+        withTiming(-7, { duration: 140 }),
+        withTiming(5, { duration: 160 }),
+        withTiming(0, { duration: 160 }),
+      ),
+    );
+  }, [idleSmile, reduceMotion, scale, rotate]);
+
   const bounce = useSharedValue(1); // progress 0..1; 1 = still
   useEffect(() => {
     if (reduceMotion) return;
@@ -333,7 +352,7 @@ export function HeaderLogo({
         <Animated.View style={[{ transformOrigin: "50% 100%" }, coinStyle]}>
           <CoinBody height={height} dark={dark} />
           <View style={{ position: "absolute", left: 0, top: 0 }}>
-            <CoinEyes height={height} dark={dark} mood={mood} />
+            <CoinEyes height={height} dark={dark} mood={face} />
           </View>
         </Animated.View>
       </Animated.View>

@@ -5,6 +5,7 @@ import Constants from "expo-constants";
 import { router } from "expo-router";
 import {
   Bell,
+  BookOpen,
   BookmarkCheck,
   CalendarClock,
   ChartColumn,
@@ -37,6 +38,7 @@ import {
   type ReminderTime,
 } from "@/lib/notifications";
 import { usePrefs } from "@/lib/prefs";
+import { tour } from "@/lib/tour";
 import { useImportBatches } from "@/lib/queries";
 import type { ThemeMode } from "@/lib/theme";
 
@@ -157,7 +159,18 @@ export default function Settings() {
 
       <GroupLabel>More</GroupLabel>
       <Group>
-        <GroupItem first icon={LayoutGrid} title="Home screen widgets" onPress={() => router.push("/widgets")} />
+        <GroupItem
+          first
+          icon={BookOpen}
+          title="How Finlyt works"
+          subtitle="A one-minute tour of the app"
+          onPress={() => {
+            // Back to Home first; the tour starts there.
+            router.dismissTo("/");
+            setTimeout(() => tour.start({ from: "settings" }), 450);
+          }}
+        />
+        <GroupItem icon={LayoutGrid} title="Home screen widgets" onPress={() => router.push("/widgets")} />
         <GroupItem icon={Sparkles} title="Replay the welcome" onPress={() => prefs.update({ onboarded: false })} />
       </Group>
 

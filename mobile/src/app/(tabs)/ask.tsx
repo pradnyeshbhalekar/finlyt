@@ -16,6 +16,7 @@ import { MemoryUpdates } from "@/components/memory-updates";
 import { ReportCard } from "@/components/month-report";
 import { KeyboardAware } from "@/components/keyboard";
 import { useTabBarHeight } from "@/components/tab-bar";
+import { TourTarget } from "@/components/tour";
 import { IconButton, Txt } from "@/components/ui";
 import { fetchAskThread, useAsk, useMeta } from "@/lib/queries";
 import { useDictation } from "@/lib/speech";
@@ -303,7 +304,7 @@ export default function Ask() {
       </ScrollView>
 
       <KeyboardAware rest={10} offset={tabBarHeight}>
-        <View className="mx-4 mt-2 flex-row items-end rounded-[28px] bg-surface p-1.5">
+        <TourTarget id="ask-box" className="mx-4 mt-2 flex-row items-end rounded-[28px] bg-surface p-1.5">
           <TextInput
             ref={inputRef}
             value={input}
@@ -331,7 +332,7 @@ export default function Ask() {
           >
             <ArrowUp size={22} color={WHITE} strokeWidth={2} />
           </Pressable>
-        </View>
+        </TourTarget>
       </KeyboardAware>
     </View>
   );
