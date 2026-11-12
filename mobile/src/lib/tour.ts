@@ -1,14 +1,38 @@
-// The guided tour: it walks through the real app (Home, Ask, Plan, History, Settings), lighting up
-// one part of a screen at a time with a short note. Screens mark those parts with <TourTarget>,
-// which reports where they are; <TourHost> in the root layout draws the spotlight and the note.
+// The tour. It opens with an overview of everything Finlyt does on one screen, then walks
+// through the real app (Home, Ask, Plan, History, Settings), lighting up one part at a time with
+// a short note in plain words. Screens mark those parts with <TourTarget>, which reports where
+// they are; <TourHost> in the root layout draws the overview, the spotlight and the notes.
 // Kept outside React so any screen can start it.
+import {
+  CalendarDays,
+  HandCoins,
+  History,
+  Keyboard,
+  ListChecks,
+  Mic,
+  PartyPopper,
+  Plus,
+  Settings,
+  Target,
+  type LucideIcon,
+} from "lucide-react-native";
 import { useSyncExternalStore } from "react";
+
+import { AskIcon } from "@/components/ask-icon";
+
+/** Bump when the tour changes enough that everyone should see it once more (after an update). */
+export const TOUR_VERSION = 2;
 
 export type Rect = { x: number; y: number; width: number; height: number };
 
+type IconLike = LucideIcon | typeof AskIcon;
+
 export type TourStep = {
-  /** The <TourTarget id> to light up, or null for a note in the middle of the screen. */
+  /** "overview": everything on one screen; "spot": light up a part; "end": the last note. */
+  kind: "overview" | "spot" | "end";
+  /** The <TourTarget id> to light up (for "spot"). */
   target: string | null;
+  icon: IconLike;
   /** The tab it's on. */
   route: "/" | "/ask" | "/plan" | "/history";
   title: string;
@@ -18,8 +42,9 @@ export type TourStep = {
 };
 
 export type TourOptions = {
-  /** "onboarding": the first time, right after the welcome. "settings": opened again later. */
-  from: "onboarding" | "settings";
+  /** "onboarding": the first time, right after the welcome. "settings": opened again later.
+   *  "update": shown once to people who already use Finlyt, after an update with a new tour. */
+  from: "onboarding" | "settings" | "update";
   /** Go on to the planning chat afterwards (they picked "Plan with Finlyt" in the welcome). */
   thenPlan?: boolean;
 };
@@ -75,77 +100,106 @@ export function useTour(): State {
   return useSyncExternalStore(tour.subscribe, tour.get, tour.get);
 }
 
-/** The stops, in order. Words are kept short and plain. */
+/** The stops, in order. Words are kept short and plain, for someone who has never used it. */
 export function tourSteps(reviewBeforeSave: boolean): TourStep[] {
   return [
+    { kind: "overview", target: null, route: "/", icon: ListChecks, title: "Everything in one minute", text: "" },
     {
-      target: null,
-      route: "/",
-      title: "Let me show you around",
-      text: "A quick look at the real app, one part at a time. It takes about a minute, and you can skip it.",
-    },
-    {
-      target: "today",
-      route: "/",
-      title: "Your day at a glance",
-      text: "The big number is what you've spent today. Once you plan your month, the bar shows how much of today's limit is left.",
-      radius: 20,
-    },
-    {
-      target: "tiles",
-      route: "/",
-      title: "This month, and money owed",
-      text: "What you've spent this month, and what friends owe you. Tap either one for the details.",
-      radius: 28,
-    },
-    {
+      kind: "spot",
       target: "composer",
       route: "/",
-      title: "Log here, in plain words",
+      icon: Keyboard,
+      title: "Type what you spent",
       text: reviewBeforeSave
-        ? "Type what you spent the way you'd say it, like “chai 40 cash, auto 120”, or tap the mic and say it. Finlyt shows what it understood, and you tap Save."
-        : "Type what you spent the way you'd say it, like “chai 40 cash, auto 120”, or tap the mic and say it. It's saved straight away, with an Undo.",
+        ? "Tap this box and type it the way you'd tell a friend, like “chai 40” or “auto 120 cash”. Tap the blue arrow, check what Finlyt understood, then tap Save."
+        : "Tap this box and type it the way you'd tell a friend, like “chai 40” or “auto 120 cash”. Tap the blue arrow and it's saved, with an Undo.",
       radius: 32,
     },
     {
+      kind: "spot",
+      target: "mic",
+      route: "/",
+      icon: Mic,
+      title: "Or just say it",
+      text: "Tap the mic and talk. Your words appear in the box. Check them, then tap the blue arrow.",
+    },
+    {
+      kind: "spot",
+      target: "add-by-hand",
+      route: "/",
+      icon: Plus,
+      title: "Or fill in a form",
+      text: "Tap + to type the amount, what it was for and how you paid, one box at a time.",
+    },
+    {
+      kind: "spot",
+      target: "today",
+      route: "/",
+      icon: CalendarDays,
+      title: "Your day at a glance",
+      text: "The big number is what you've spent today. Once you plan your month, the bar shows what's left of today's limit.",
+      radius: 20,
+    },
+    {
+      kind: "spot",
+      target: "tiles",
+      route: "/",
+      icon: HandCoins,
+      title: "This month, and money owed",
+      text: "What you've spent this month, and what friends owe you. Paid for a friend? Say “lunch 450 with Rahul, he owes 200”.",
+      radius: 28,
+    },
+    {
+      kind: "spot",
       target: "logged",
       route: "/",
-      title: "Everything you logged today",
-      text: "Your entries land here. Tap one to see it, or press and hold to delete it. Paid for a friend? Say “lunch 450 with Rahul, he owes 200”.",
+      icon: ListChecks,
+      title: "Today's entries",
+      text: "Everything you log today shows up here. Tap one to see it, or press and hold to delete it.",
       radius: 16,
     },
     {
+      kind: "spot",
       target: "ask-box",
       route: "/ask",
+      icon: AskIcon,
       title: "Ask about your money",
       text: "Ask anything, like “Where did my money go this month?” or “Kal kitna kharcha hua?”. Tell it your salary or rent, and it remembers.",
       radius: 32,
     },
     {
+      kind: "spot",
       target: "plan-main",
       route: "/plan",
+      icon: Target,
       title: "Plan your month",
-      text: "A short chat sets your budget and a daily limit. What you don't spend is saved for surprises. Every week Finlyt checks in, and savings goals live here too.",
+      text: "A short chat sets your budget and a daily limit. What you don't spend is saved for surprises. Savings goals live here too.",
       radius: 28,
     },
     {
+      kind: "spot",
       target: "tab-history",
       route: "/history",
+      icon: History,
       title: "History",
       text: "Every entry, payback and plan change, day by day.",
       radius: 20,
     },
     {
+      kind: "spot",
       target: "avatar",
       route: "/",
+      icon: Settings,
       title: "Settings",
-      text: "Tap your photo for Settings: the theme, reminders, check before saving, add by hand, import from an AI chat, widgets, and this tour again.",
+      text: "Tap your photo for Settings: the theme, reminder times, import from an AI chat, widgets, and this tour again.",
     },
     {
+      kind: "end",
       target: null,
       route: "/",
+      icon: PartyPopper,
       title: "You're all set",
-      text: "Try your first one now. Something small, like “chai 40”.",
+      text: "Try your first one now: type “chai 40” in the box and tap the blue arrow.",
     },
   ];
 }

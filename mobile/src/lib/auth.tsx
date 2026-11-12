@@ -128,7 +128,11 @@ export function describeSignInError(error: unknown): string {
           "(package com.finlyt.app + this build's SHA-1) and EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID."
         );
       default:
-        return `Google sign-in failed (${error.code}).`;
+        // While the Google sign-in screen is in testing, only accounts on its list of testers get in.
+        return (
+          `Couldn't sign in with Google (${error.code}). If it keeps happening, this Google account may not ` +
+          "be on Finlyt's list of testers yet: ask the person who shared Finlyt with you to add it."
+        );
     }
   }
   return error instanceof Error ? error.message : "Sign-in failed.";

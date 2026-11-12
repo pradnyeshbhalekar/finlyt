@@ -30,6 +30,12 @@ class Settings:
     # Ask Finlyt chats not touched for this many days are deleted.
     ask_keep_days: int = 10
     serverless: bool = False
+    # Email through Brevo: the welcome email and feedback. Off until the key and a sender address
+    # (verified in Brevo) are set. Feedback goes to FEEDBACK_TO, or to the sender address.
+    brevo_api_key: str | None = None
+    mail_from: str | None = None
+    mail_from_name: str = "Finlyt"
+    feedback_to: str | None = None
 
     @classmethod
     def from_env(cls) -> Settings:
@@ -43,6 +49,10 @@ class Settings:
             groq_api_key=env("GROQ_API_KEY") or None,
             groq_model=env("GROQ_MODEL") or None,
             ask_keep_days=int(env("ASK_KEEP_DAYS") or 10),
+            brevo_api_key=env("BREVO_API_KEY") or None,
+            mail_from=env("MAIL_FROM") or None,
+            mail_from_name=env("MAIL_FROM_NAME") or "Finlyt",
+            feedback_to=env("FEEDBACK_TO") or None,
             # Vercel sets VERCEL=1 in deployments.
             serverless=bool(env("VERCEL")),
         )

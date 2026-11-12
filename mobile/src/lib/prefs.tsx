@@ -11,9 +11,11 @@ export type Prefs = {
   /** true: show Gemini's entries for a quick check before saving. false: save straight away. */
   reviewBeforeSave: boolean;
   onboarded: boolean;
+  /** The tour version last shown (lib/tour TOUR_VERSION); a newer one is shown once. */
+  tourVersion: number;
 };
 
-const DEFAULTS: Prefs = { theme: "auto", reviewBeforeSave: true, onboarded: false };
+const DEFAULTS: Prefs = { theme: "auto", reviewBeforeSave: true, onboarded: false, tourVersion: 0 };
 
 type PrefsState = Prefs & { loaded: boolean; update: (change: Partial<Prefs>) => void };
 

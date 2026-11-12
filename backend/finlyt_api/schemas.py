@@ -215,6 +215,15 @@ class PlanIn(_In):
         return self
 
 
+class FeedbackIn(_In):
+    """Feedback from the app: what kind, the message, and which app and phone it came from."""
+
+    kind: Literal["idea", "problem", "praise"] = "idea"
+    message: str = Field(min_length=2, max_length=4000)
+    app_version: str | None = Field(default=None, max_length=20)
+    device: str | None = Field(default=None, max_length=80)
+
+
 class CheckInIn(_In):
     """The weekly check-in day, Monday 0 to Sunday 6."""
 

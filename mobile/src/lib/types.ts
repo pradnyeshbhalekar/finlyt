@@ -23,6 +23,8 @@ export type Meta = {
   categories: Category[];
   people: Person[];
   latest_import_at: string | null;
+  /** Mail is set up on the server, so Send feedback works. Older servers leave it out. */
+  feedback?: boolean;
 };
 
 export type Payment = {
@@ -521,4 +523,13 @@ export type Goal = {
   archived: boolean;
   created_at: string;
   deposits?: { id: number; amount_paise: number; note: string | null; created_at: string }[];
+};
+
+export type FeedbackKind = "idea" | "problem" | "praise";
+
+export type FeedbackIn = {
+  kind: FeedbackKind;
+  message: string;
+  app_version: string | null;
+  device: string | null;
 };

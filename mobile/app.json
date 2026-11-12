@@ -2,7 +2,7 @@
   "expo": {
     "name": "Finlyt",
     "slug": "finlyt",
-    "version": "0.1.4",
+    "version": "0.1.5",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "finlyt",
@@ -18,7 +18,7 @@
       },
       "predictiveBackGestureEnabled": false,
       "package": "com.finlyt.app",
-      "versionCode": 7
+      "versionCode": 8
     },
     "web": {
       "output": "static",

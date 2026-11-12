@@ -11,6 +11,7 @@ from ..errors import ApiError
 from ..models import User
 from ..schemas import GoogleLoginIn
 from ..serializers import user_json
+from ..services import emails
 from ..timeutil import now_utc
 from ..validation import parse_body
 
@@ -57,6 +58,8 @@ def google_login():
     user.last_login_at = now_utc()
     token = create_session(s, user, body.device)
     s.commit()
+    if is_new_user:
+        emails.send_welcome(user)  # only the first time; never fails the sign-in
     return {"token": token, "user": user_json(user), "is_new_user": is_new_user}
 
 

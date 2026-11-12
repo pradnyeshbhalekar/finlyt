@@ -1,14 +1,18 @@
-// Home: today's check-in. Type (or say) what you spent at the bottom; Gemini turns it into
-// entries that are saved straight away or shown for a quick check, per Settings.
+// Home: today's check-in. Type (or say) what you spent at the bottom, or tap + for a form; Gemini
+// turns words into entries that are saved straight away or shown for a quick check, per Settings.
+// Examples above the box can be tapped to try them. Before anything has ever been logged, a card
+// explains the three ways to log. People who already use Finlyt see the tour once after an
+// update that changes it (prefs.tourVersion).
 import { router, useLocalSearchParams } from "expo-router";
 import { ChevronRight, CircleAlert, Undo2 } from "lucide-react-native";
-import { useEffect, useState } from "react";
+import { useEffect, useRef } from "react";
 import { AppState, Pressable, RefreshControl, ScrollView, View } from "react-native";
 
 import { AvatarButton } from "@/components/avatar";
 import { Coin, HeaderLogo, type Mood } from "@/components/brand";
 import { Composer } from "@/components/composer";
 import { ExpenseRow } from "@/components/expense-row";
+import { FirstSteps } from "@/components/first-steps";
 import { KeyboardAware } from "@/components/keyboard";
 import { CheckInNudge, SummaryTiles, TodayHero } from "@/components/home-summary";
 import { ProposalCard } from "@/components/proposal-card";
@@ -42,18 +46,15 @@ import {
   useResolveTxn,
   useStats,
 } from "@/lib/queries";
+import { useSplashPlaying } from "@/lib/splash-store";
+import { tour, TOUR_VERSION } from "@/lib/tour";
 import { refreshWidgets, scheduleWidgetRefresh } from "@/widgets/refresh";
 import { useTheme } from "@/lib/theme";
 import type { Expense, Proposal } from "@/lib/types";
 import { confirmDelete as askDelete } from "@/lib/ask-sheet";
 
-const EXAMPLES = [
-  "lunch 450 with Rahul, he owes 200",
-  "auto 120, paid 30 more in cash",
-  "chai 40 cash",
-  "dmart 1.2k groceries",
-  "petrol 500, rapido 74",
-];
+/** Shown above the box until something's logged today; tapping one puts it in the box. */
+const EXAMPLES = ["chai 40", "auto 120 cash", "groceries 850", "lunch 450 with Rahul, he owes 200"];
 
 export default function Home() {
   const { colors } = useTheme();
@@ -68,6 +69,7 @@ export default function Home() {
   const day = useStats(today, today);
   const month = useStats(isoDate(startOfMonth(now)), today);
   const todays = useExpenses({ from: today, to: today, limit: 100 });
+  const latest = useExpenses({ limit: 1 }); // has anything ever been logged?
   const plan = usePlan();
   const txns = usePendingTxns();
   const resolveTxn = useResolveTxn();
@@ -86,7 +88,6 @@ export default function Home() {
     return () => sub.remove();
   }, []);
 
-  const [example] = useState(() => EXAMPLES[Math.floor(Math.random() * EXAMPLES.length)]);
 
   // The "Saved" toast goes away on its own.
   useEffect(() => {
@@ -194,8 +195,32 @@ export default function Home() {
   const busy = propose.isPending;
   // The logo's coin reacts: thinking while Gemini reads, happy for a few seconds after a save.
   const headerMood: Mood = busy || commit.isPending ? "thinking" : saved ? "happy" : restingMood;
-  // The "Try: …" example only helps before anything's logged today.
+  // The examples only help before anything's logged today.
   const showHint = !text && !pending && !saved && !notice && !busy && items.length === 0;
+  const firstTime = latest.data !== undefined && latest.data.items.length === 0;
+
+  /** Puts an example in the box and opens the keyboard, so it's one tap on the arrow to try it. */
+  function tryExample(words: string) {
+    logDraft.setText(words);
+    router.setParams({ compose: "type" });
+  }
+
+  // People who already use Finlyt see the tour once after an update that changes it (new people
+  // get it at the end of the welcome). Waits for the launch splash.
+  const splashPlaying = useSplashPlaying();
+  const prefsRef = useRef(prefs);
+  useEffect(() => {
+    prefsRef.current = prefs;
+  });
+  useEffect(() => {
+    if (!prefs.loaded || prefs.tourVersion >= TOUR_VERSION || splashPlaying) return;
+    const timer = setTimeout(() => {
+      if (tour.get().active) return;
+      prefsRef.current.update({ tourVersion: TOUR_VERSION });
+      tour.start({ from: "update" });
+    }, 1200);
+    return () => clearTimeout(timer);
+  }, [prefs.loaded, prefs.tourVersion, splashPlaying]);
   const toLog = txns.data?.items ?? [];
 
   return (
@@ -288,12 +313,19 @@ export default function Home() {
             ))}
           </View>
           {items.length === 0 && !todays.isLoading ? (
-            <View className="mt-6 items-center">
-              <Coin size={56} mood={restingMood} variant="bare" />
-              <Txt tone="muted" className="mt-3 text-center">
-                Nothing logged yet today.
-              </Txt>
-            </View>
+            firstTime ? (
+              <FirstSteps onForm={() => router.push("/expense/new")} />
+            ) : (
+              <View className="mt-6 items-center">
+                <Coin size={56} mood={restingMood} variant="bare" />
+                <Txt tone="muted" className="mt-3 text-center">
+                  Nothing logged yet today.
+                </Txt>
+                <Txt tone="faint" className="mt-1 text-center text-sm">
+                  Type it in the box below, tap the mic, or tap + for a form.
+                </Txt>
+              </View>
+            )
           ) : null}
 
           <Pressable
@@ -354,16 +386,35 @@ export default function Home() {
           ) : null}
 
           {showHint ? (
-            <View className="mb-2 self-start rounded-full border border-line px-4 py-2">
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              className="mb-2"
+              style={{ flexGrow: 0 }}
+              contentContainerClassName="items-center gap-2 pr-2"
+            >
               <Txt tone="muted" className="text-sm">
-                Try: “{txn ? "groceries, paid 200 more in cash" : example}”
+                Try
               </Txt>
-            </View>
+              {(txn ? ["groceries, paid 200 more in cash"] : EXAMPLES).map((words) => (
+                <Pressable
+                  key={words}
+                  onPress={() => tryExample(words)}
+                  accessibilityRole="button"
+                  accessibilityHint="Puts this in the box"
+                  className="rounded-full border border-line bg-bg px-3.5 py-2 active:bg-surface"
+                >
+                  <Txt className="text-sm">{words}</Txt>
+                </Pressable>
+              ))}
+            </ScrollView>
           ) : null}
 
           <TourTarget id="composer">
           <Composer
             busy={busy}
+            onAddByHand={() => router.push("/expense/new")}
             placeholder={txn ? `What was ${txn.name}?` : "What did you spend on?"}
             hints={hints}
             onSend={() => void send()}

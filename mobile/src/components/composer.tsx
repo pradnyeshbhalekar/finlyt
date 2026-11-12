@@ -1,6 +1,6 @@
-// The chat-style input at the bottom of Home: type the way you talk, or tap the mic and talk.
-// Speech becomes text on the phone (so simple notes skip AI entirely); builds without the
-// speech module fall back to recording a voice note for Gemini.
+// The chat-style input at the bottom of Home: type the way you talk, tap the mic and talk, or tap
+// + to fill in a form instead. Speech becomes text on the phone (so simple notes skip AI
+// entirely); builds without the speech module fall back to recording a voice note for Gemini.
 import {
   RecordingPresets,
   requestRecordingPermissionsAsync,
@@ -10,7 +10,7 @@ import {
   type RecordingOptions,
   type RecordingStatus,
 } from "expo-audio";
-import { ArrowUp, AudioLines, Mic, Square, X } from "lucide-react-native";
+import { ArrowUp, AudioLines, Mic, Plus, Square, X } from "lucide-react-native";
 import { useEffect, useRef, type ComponentRef } from "react";
 import { ActivityIndicator, Pressable, TextInput, View } from "react-native";
 
@@ -18,6 +18,7 @@ import { logDraft, useLogDraft } from "@/lib/log-draft";
 import { useDictation } from "@/lib/speech";
 import { BRAND, fonts, useTheme, WHITE } from "@/lib/theme";
 
+import { TourTarget } from "./tour";
 import { Icon, IconButton, Txt } from "./ui";
 
 const MAX_SECONDS = 180;
@@ -43,9 +44,12 @@ export function Composer({
   hints,
   onSend,
   onError,
+  onAddByHand,
   launch,
   onLaunched,
 }: {
+  /** Shows a + at the start that opens the add-by-hand form. */
+  onAddByHand?: () => void;
   /** Opened from the home-screen widget: start typing (keyboard up) or talking (mic on). */
   launch?: "type" | "voice";
   onLaunched?: () => void;
@@ -142,6 +146,11 @@ export function Composer({
       ) : null}
 
       <View className="flex-row items-end">
+        {onAddByHand && !active ? (
+          <TourTarget id="add-by-hand">
+            <IconButton icon={Plus} label="Add by hand" onPress={onAddByHand} tone="muted" disabled={busy} />
+          </TourTarget>
+        ) : null}
         {recording.isRecording ? (
           <View className="h-11 flex-1 flex-row items-center gap-2.5 px-3">
             <View className="h-2.5 w-2.5 rounded-full bg-danger" />
@@ -156,19 +165,21 @@ export function Composer({
             placeholderTextColor={colors.faint}
             multiline
             editable={!busy && !listening}
-            className="max-h-32 min-h-11 flex-1 px-3 py-2.5 text-base text-fg"
+            className={`max-h-32 min-h-11 flex-1 py-2.5 pr-3 text-base text-fg ${onAddByHand ? "pl-1" : "pl-3"}`}
             style={{ fontFamily: fonts.regular }}
             textAlignVertical="center"
           />
         )}
 
-        <IconButton
-          icon={active ? Square : Mic}
-          label={active ? "Stop" : "Talk"}
-          onPress={() => void (recording.isRecording ? toggleRecording() : toggleListening())}
-          tone={active ? "danger" : "muted"}
-          disabled={busy}
-        />
+        <TourTarget id="mic">
+          <IconButton
+            icon={active ? Square : Mic}
+            label={active ? "Stop" : "Talk"}
+            onPress={() => void (recording.isRecording ? toggleRecording() : toggleListening())}
+            tone={active ? "danger" : "muted"}
+            disabled={busy}
+          />
+        </TourTarget>
         <Pressable
           onPress={onSend}
           disabled={!canSend}

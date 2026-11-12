@@ -12,6 +12,7 @@ import {
   Download,
   LayoutGrid,
   LogOut,
+  MessageSquareHeart,
   Pencil,
   Sparkles,
   Target,
@@ -20,6 +21,7 @@ import { useEffect, useState } from "react";
 import { ScrollView, View } from "react-native";
 
 import { Avatar } from "@/components/avatar";
+import { FeedbackSheet } from "@/components/feedback-sheet";
 import { Group, GroupItem, GroupLabel } from "@/components/group";
 import { ReminderEditor } from "@/components/reminder-editor";
 import { formatClock, TimePickerSheet } from "@/components/time-picker";
@@ -39,7 +41,7 @@ import {
 } from "@/lib/notifications";
 import { usePrefs } from "@/lib/prefs";
 import { tour } from "@/lib/tour";
-import { useImportBatches } from "@/lib/queries";
+import { useImportBatches, useMeta } from "@/lib/queries";
 import type { ThemeMode } from "@/lib/theme";
 
 const THEMES: { value: ThemeMode; label: string }[] = [
@@ -59,12 +61,14 @@ export default function Settings() {
   const prefs = usePrefs();
   const queryClient = useQueryClient();
   const imports = useImportBatches();
+  const meta = useMeta();
   const [times, setTimes] = useState<ReminderTime[] | null>(null);
   const [editingTimes, setEditingTimes] = useState(false);
   const [checkIn, setCheckIn] = useState<CheckIn>(DEFAULT_CHECK_IN);
   const [pickingCheckIn, setPickingCheckIn] = useState(false);
   const [pickRound, setPickRound] = useState(0);
   const [reminderNote, setReminderNote] = useState<string | null>(null);
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
 
   useEffect(() => {
     void getReminderTimes().then(setTimes);
@@ -172,6 +176,15 @@ export default function Settings() {
         />
         <GroupItem icon={LayoutGrid} title="Home screen widgets" onPress={() => router.push("/widgets")} />
         <GroupItem icon={Sparkles} title="Replay the welcome" onPress={() => prefs.update({ onboarded: false })} />
+        {/* Only once the server can email it (Brevo set up); until then there's no dead button. */}
+        {meta.data?.feedback ? (
+          <GroupItem
+            icon={MessageSquareHeart}
+            title="Send feedback"
+            subtitle="An idea, a problem, or something you like"
+            onPress={() => setFeedbackOpen(true)}
+          />
+        ) : null}
       </Group>
 
       <View className="mt-8">
@@ -202,6 +215,8 @@ export default function Settings() {
           <Button label="Done" onPress={() => setEditingTimes(false)} className="flex-1" />
         </View>
       </Sheet>
+
+      <FeedbackSheet visible={feedbackOpen} onClose={() => setFeedbackOpen(false)} />
 
       <TimePickerSheet
         key={pickRound}

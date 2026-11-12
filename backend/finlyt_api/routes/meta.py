@@ -5,6 +5,7 @@ from sqlalchemy import func, select
 
 from ..auth import current_user
 from ..db import get_session
+from ..mailer import get_mailer
 from ..models import Account, Category, Expense, Person
 from ..serializers import account_json, category_json, user_json
 from ..timeutil import TZ_NAME, now_utc, to_ist_iso
@@ -43,4 +44,6 @@ def meta():
         "categories": [category_json(c) for c in categories],
         "people": [{"id": p.id, "name": p.name} for p in people],
         "latest_import_at": to_ist_iso(latest_import),
+        # Mail is set up (Brevo), so feedback can be sent; the app hides Send feedback otherwise.
+        "feedback": get_mailer() is not None,
     }

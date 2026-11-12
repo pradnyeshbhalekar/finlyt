@@ -29,6 +29,7 @@ import type {
   PlanTurn,
   Proposal,
   ProposedPlan,
+  FeedbackIn,
   Stats,
 } from "./types";
 
@@ -440,4 +441,11 @@ export function useGoalDeposit() {
   return useGoalChange(({ id, amount_paise, note }: { id: number; amount_paise: number; note?: string }) =>
     api<Goal>(`/api/goals/${id}/deposits`, { method: "POST", body: { amount_paise, note } }),
   );
+}
+
+/** Feedback from Settings, emailed to whoever runs Finlyt (POST /api/feedback). */
+export function useSendFeedback() {
+  return useMutation({
+    mutationFn: (body: FeedbackIn) => api<{ sent: boolean }>("/api/feedback", { method: "POST", body }),
+  });
 }

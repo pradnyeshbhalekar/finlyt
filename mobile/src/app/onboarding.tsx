@@ -42,7 +42,7 @@ import {
 } from "@/lib/notifications";
 import { usePrefs } from "@/lib/prefs";
 import { BRAND, useTheme, WHITE } from "@/lib/theme";
-import { tour } from "@/lib/tour";
+import { tour, TOUR_VERSION } from "@/lib/tour";
 
 type Step = "welcome" | "checkins" | "saving" | "import" | "plan";
 
@@ -221,7 +221,8 @@ export default function Onboarding() {
       await saveReminderTimes(times); // asks for notification permission
       await saveCheckIn(checkIn); // its reminder, and the day for the server
     } finally {
-      prefs.update({ reviewBeforeSave: review, onboarded: true }); // switches the app to Home
+      // Switches the app to Home; the tour below counts as seen, so Home doesn't start it again.
+      prefs.update({ reviewBeforeSave: review, onboarded: true, tourVersion: TOUR_VERSION });
       // Then the tour of the real app, once Home is up; it goes on to the planning chat if they asked.
       setTimeout(() => tour.start({ from: "onboarding", thenPlan }), 700);
     }
