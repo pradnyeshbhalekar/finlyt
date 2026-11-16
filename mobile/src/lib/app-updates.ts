@@ -40,3 +40,13 @@ export function useAppUpdate(): { pending: boolean; restart: () => void } {
     restart: () => void Updates.reloadAsync().catch((e) => console.warn("[updates] reload failed", e)),
   };
 }
+
+/** Which code is running, for the bottom of Settings: the APK's own, or an update (and when). */
+export function runningLabel(): string {
+  if (!Updates.isEnabled) return "";
+  if (Updates.isEmbeddedLaunch || !Updates.updateId) return "As installed";
+  const when = Updates.createdAt
+    ? Updates.createdAt.toLocaleString("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" })
+    : "";
+  return `Update ${Updates.updateId.slice(0, 8)}${when ? ` · ${when}` : ""}`;
+}

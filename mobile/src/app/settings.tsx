@@ -27,6 +27,7 @@ import { Group, GroupItem, GroupLabel } from "@/components/group";
 import { ReminderEditor } from "@/components/reminder-editor";
 import { formatClock, TimePickerSheet } from "@/components/time-picker";
 import { Button, Segmented, Sheet, Toggle, Txt } from "@/components/ui";
+import { runningLabel } from "@/lib/app-updates";
 import { useAuth } from "@/lib/auth";
 import { API_URL } from "@/lib/config";
 import {
@@ -203,6 +204,12 @@ export default function Settings() {
       <Txt tone="faint" className="mt-8 text-center text-xs">
         Finlyt {Constants.expoConfig?.version} · {API_URL.replace(/^https?:\/\//, "")}
       </Txt>
+      {/* Says whether an over-the-air update is running, so you can tell one arrived. */}
+      {runningLabel() ? (
+        <Txt tone="faint" className="mt-1 text-center text-xs">
+          {runningLabel()}
+        </Txt>
+      ) : null}
 
       <Sheet visible={editingTimes} onClose={() => setEditingTimes(false)}>
         <Txt weight="semibold" className="text-lg">
