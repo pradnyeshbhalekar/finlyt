@@ -3,17 +3,21 @@
 A new user starts with "Bank" and "Cash" (defaults.py). The usual one (`is_primary`) is what an
 entry is saved to when you don't say how you paid. An account with entries can't be deleted,
 only renamed, so old entries always keep their account.
+
+People who joined before 2026-11-14 got the first user's own banks (Kotak, DNS Bank). The bank's
+name doesn't matter to anyone, so `POST /accounts/one-bank` folds every bank account into one
+called "Bank", entries and all. Cash stays separate.
 """
 
 from __future__ import annotations
 
 from flask import Blueprint
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 
 from ..auth import current_user
 from ..db import get_session
 from ..errors import ApiError
-from ..models import Account, BankTxn, ExpensePayment
+from ..models import Account, BankTxn, ExpensePayment, SmsMessage
 from ..schemas import AccountIn, AccountPatch
 from ..serializers import account_json
 from ..validation import parse_body
@@ -116,3 +120,46 @@ def delete_account(account_id: int):
         others[0].is_primary = True
     s.commit()
     return "", 204
+
+
+@bp.post("/accounts/one-bank")
+def one_bank():
+    """Fold all bank accounts into one called "Bank": the usual one (or the first) stays, takes the
+    others' payments, bank payments and SMS, and the others go. Safe to call again."""
+    user = current_user()
+    s = get_session()
+    banks = [a for a in _mine(s, user.id) if a.kind == "bank"]
+    if not banks:
+        raise ApiError(409, "no_bank_account", "You don't have a bank account to keep")
+    keep = next((a for a in banks if a.is_primary), banks[0])
+    moved = 0
+    for old in banks:
+        if old.id == keep.id:
+            continue
+        moved += s.execute(
+            update(ExpensePayment).where(ExpensePayment.account_id == old.id).values(account_id=keep.id)
+        ).rowcount
+        # A transfer between your own banks leaves the same reference on both; one account can
+        # hold each reference only once, so the second copy keeps its row but not the reference
+        # (it only ever served to spot duplicates).
+        kept_refs = set(
+            s.scalars(select(BankTxn.reference).where(BankTxn.account_id == keep.id, BankTxn.reference.is_not(None)))
+        )
+        for txn in s.scalars(select(BankTxn).where(BankTxn.account_id == old.id)):
+            if txn.reference in kept_refs:
+                txn.reference = None
+            txn.account_id = keep.id
+            moved += 1
+        s.flush()
+        s.execute(update(SmsMessage).where(SmsMessage.account_id == old.id).values(account_id=keep.id))
+        s.delete(old)
+        s.flush()
+    named_bank = s.scalar(
+        select(Account.id).where(Account.user_id == user.id, func.lower(Account.name) == "bank", Account.id != keep.id)
+    )
+    if named_bank is None:
+        keep.name = "Bank"
+    keep.bank_code = None
+    keep.last4 = None
+    s.commit()
+    return {"items": [account_json(a) for a in _mine(s, user.id)], "moved": moved}

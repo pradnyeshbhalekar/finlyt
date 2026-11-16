@@ -1,6 +1,7 @@
-// Your accounts: the ways you pay (a bank, a card, cash). Everyone starts with Bank and Cash;
-// here you rename them to your own, add more, pick the usual one (used when you don't say how
-// you paid) and delete the ones you don't use. From Settings → Logging.
+// Your accounts: the ways you pay. Everyone starts with Bank and Cash, and which bank doesn't
+// matter much; you can still rename, add, pick the usual one (used when you don't say how you
+// paid) and delete. People who joined before 2026-11-14 got Kotak and DNS Bank; a card offers to
+// fold every bank account into one "Bank". From Settings → Logging.
 import { Banknote, Check, Landmark, Plus } from "lucide-react-native";
 import { useState } from "react";
 import { ActivityIndicator, ScrollView, TextInput, View } from "react-native";
@@ -8,8 +9,8 @@ import { ActivityIndicator, ScrollView, TextInput, View } from "react-native";
 import { Group, GroupItem, GroupLabel } from "@/components/group";
 import { Button, Chip, Icon, Sheet, Txt } from "@/components/ui";
 import { ApiError } from "@/lib/api";
-import { confirmDelete } from "@/lib/ask-sheet";
-import { useAddAccount, useChangeAccount, useDeleteAccount, useMeta } from "@/lib/queries";
+import { askSheet, confirmDelete } from "@/lib/ask-sheet";
+import { useAddAccount, useChangeAccount, useDeleteAccount, useMeta, useOneBank } from "@/lib/queries";
 import { fonts, useTheme } from "@/lib/theme";
 import type { Account } from "@/lib/types";
 
@@ -26,7 +27,7 @@ function NameBox({ value, onChange }: { value: string; onChange: (text: string) 
     <TextInput
       value={value}
       onChangeText={onChange}
-      placeholder="HDFC, SBI card, Paytm wallet"
+      placeholder="Credit card, wallet"
       placeholderTextColor={colors.faint}
       maxLength={40}
       autoFocus
@@ -42,7 +43,28 @@ export default function Accounts() {
   const add = useAddAccount();
   const change = useChangeAccount();
   const remove = useDeleteAccount();
+  const oneBank = useOneBank();
   const accounts = meta.data?.accounts ?? [];
+  const banks = accounts.filter((a) => a.kind === "bank");
+  const [mergeError, setMergeError] = useState<string | null>(null);
+
+  function askOneBank() {
+    const names = banks.map((a) => a.name);
+    const list = `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+    askSheet({
+      title: "Use one bank account?",
+      message: `${list} become one account called Bank, with all their entries. Cash stays as it is. This can't be undone.`,
+      actions: [
+        {
+          label: "Use one bank account",
+          onPress: () => {
+            setMergeError(null);
+            oneBank.mutate(undefined, { onError: (e) => setMergeError(explain(e)) });
+          },
+        },
+      ],
+    });
+  }
 
   // The account being changed, or "new" while adding one.
   const [editing, setEditing] = useState<Account | "new" | null>(null);
@@ -88,9 +110,27 @@ export default function Accounts() {
   return (
     <ScrollView className="flex-1 bg-bg" contentContainerClassName="px-5 pb-16">
       <Txt tone="muted" className="mt-2 text-base leading-6">
-        The ways you pay. Name them after your own bank or card, so you can say “chai 40 hdfc”. When you don&apos;t say
-        how you paid, Finlyt uses your usual one.
+        The ways you pay: Bank (UPI and cards) and Cash. Say “cash” when you paid in cash; otherwise Finlyt uses your
+        usual one.
       </Txt>
+
+      {banks.length > 1 ? (
+        <View className="mt-5 rounded-3xl bg-surface p-4">
+          <Txt weight="semibold" className="text-base">
+            One bank account is enough
+          </Txt>
+          <Txt tone="muted" className="mt-1 text-sm leading-5">
+            Which bank you paid from doesn&apos;t matter much. {banks.map((a) => a.name).join(" and ")} can become one
+            account called Bank, with all their entries.
+          </Txt>
+          {mergeError ? (
+            <Txt tone="danger" className="mt-2 text-sm">
+              {mergeError}
+            </Txt>
+          ) : null}
+          <Button label="Use one bank account" onPress={askOneBank} loading={oneBank.isPending} className="mt-3" />
+        </View>
+      ) : null}
 
       <GroupLabel>Your accounts</GroupLabel>
       <Group>

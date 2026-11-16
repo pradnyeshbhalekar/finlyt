@@ -87,3 +87,51 @@ def test_accounts_are_private(engine):
     finally:
         outer.rollback()
         connection.close()
+
+
+def test_one_bank_folds_kotak_and_dns_into_bank(client, app, me):
+    """Older accounts got Kotak and DNS Bank; one tap makes them a single "Bank", entries and all."""
+    from datetime import datetime
+
+    from finlyt_api.models import Account, BankTxn
+    from finlyt_api.timeutil import ensure_aware
+
+    kotak, dns, cash = me["acc"]["Kotak"], me["acc"]["DNS Bank"], me["acc"]["Cash"]
+    paid = {
+        "occurred_at": "2026-11-04T13:12:00+05:30",
+        "description": "Groceries",
+        "category_id": me["cat"]["Groceries"],
+        "payments": [{"account_id": dns, "amount_paise": 30000}, {"account_id": kotak, "amount_paise": 10000}],
+    }
+    expense = client.post("/api/expenses", json=paid).get_json()
+    client.post("/api/expenses", json={**paid, "payments": [{"account_id": cash, "amount_paise": 5000}]})
+    # A transfer between the two banks: the same UPI reference on both sides.
+    with app.app_context():
+        s = app.extensions["finlyt.sessionmaker"]()
+        for account_id, direction in ((kotak, "debit"), (dns, "credit")):
+            s.add(BankTxn(user_id=me["user"]["id"], account_id=account_id, direction=direction, amount_paise=900000,
+                          channel="upi", counterparty="me@upi", reference="600000000777",
+                          occurred_at=ensure_aware(datetime(2026, 11, 3, 19, 24))))
+        s.commit()
+        s.close()
+
+    resp = client.post("/api/accounts/one-bank")
+    assert resp.status_code == 200, resp.get_json()
+    data = resp.get_json()
+    assert [(a["name"], a["kind"], a["is_primary"]) for a in data["items"]] == [("Bank", "bank", True), ("Cash", "cash", False)]
+    assert data["items"][0]["id"] == kotak  # the usual one stays, renamed
+    assert data["moved"] == 2  # DNS's payment and its bank txn
+
+    # The groceries entry is now paid from Bank twice; cash entries are untouched.
+    got = client.get(f"/api/expenses/{expense['id']}").get_json()
+    assert sorted((p["account_id"], p["amount_paise"]) for p in got["payments"]) == [(kotak, 10000), (kotak, 30000)]
+    with app.app_context():
+        s = app.extensions["finlyt.sessionmaker"]()
+        assert s.get(Account, dns) is None
+        refs = sorted((t.direction, t.reference) for t in s.query(BankTxn).filter_by(account_id=kotak))
+        assert refs == [("credit", None), ("debit", "600000000777")]
+        s.close()
+
+    # Again: nothing left to fold.
+    again = client.post("/api/accounts/one-bank").get_json()
+    assert again["moved"] == 0 and [a["name"] for a in again["items"]] == ["Bank", "Cash"]

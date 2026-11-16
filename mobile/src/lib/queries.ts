@@ -123,6 +123,15 @@ export function useChangeAccount() {
   });
 }
 
+/** Kotak, DNS Bank and the like become one account called Bank, entries and all (Cash stays). */
+export function useOneBank() {
+  const refresh = useRefreshMoney();
+  return useMutation({
+    mutationFn: () => api<{ items: Account[]; moved: number }>("/api/accounts/one-bank", { method: "POST" }),
+    onSuccess: refresh,
+  });
+}
+
 export function useDeleteAccount() {
   const queryClient = useQueryClient();
   return useMutation({
