@@ -76,6 +76,9 @@ export const importDraft = {
   watch(isWatching: (() => boolean) | null) {
     watcher = isWatching;
   },
+  get(): State {
+    return state;
+  },
 };
 
 export function useImportDraft(): State {
