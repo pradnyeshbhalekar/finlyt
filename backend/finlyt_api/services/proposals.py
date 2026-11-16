@@ -50,6 +50,12 @@ in repaid, with txn set to the debit transaction label it went out as, or null f
 not a new expense.
 - Brand or place names (Zomato, Swiggy, DMart, Rapido, Uber, Blinkit, Zepto) are where I spent, \
 and help pick the category.
+- I may paste a bank SMS ("Sent Rs.450 from HDFC Bank A/C *1234 to zomato@paytm on 12-11-26"). \
+Money that went out is one expense of that amount, paid from the account the SMS names (or my \
+primary account), described by who it went to ("Zomato", "UPI to Rahul Sharma"), at the SMS's \
+date and time. Money coming in is a settlement only if the sender owes me. OTPs, payment \
+requests, reminders, failed payments and ATM withdrawals are not spending: log nothing and say why \
+in one short question.
 
 How to fill the answer:
 - expenses: one per thing I bought or paid for. Don't merge separate items, skip small ones or \
@@ -83,6 +89,30 @@ txn is the credit transaction label it arrived as, or null if it was cash.
 Don't ask how I paid or which category; I can fix those myself. Leave transactions I don't \
 mention alone; they stay pending.
 - transcript: the voice note word for word, in the language I spoke. Empty if there's no audio.
+"""
+
+RECEIPT_PROMPT = """\
+You read a scanned shop receipt or bill for my personal expense tracker. I live in India and \
+amounts are in rupees. The receipt's pages are attached as images, in order.
+
+Answer with exactly one expense for what I paid:
+- total: the final amount payable: the grand total or net amount after discounts, taxes, \
+service charge and round-off. Not the subtotal, not "amount tendered", not "change".
+- description: the shop or restaurant, short, like a bank statement line a person would write: \
+"Dinner at Barbeque Nation", "DMart groceries", "Apollo Pharmacy". Title case for names.
+- category: exactly one of my category names, from what was bought.
+- time: the date and time printed on the receipt as "YYYY-MM-DD HH:MM" in IST, if they're \
+readable and not in the future. Use 12:00 for a date with no time. null if there's no date.
+- payments: one payment of the whole total. source is Cash if the receipt says cash was paid, \
+otherwise my primary account (card and UPI are paid from it). If a bank transaction waiting to \
+be explained has the same amount on that day, use its label instead.
+- my_share = total, owed_by = []: I say who owes me what myself, after reading this.
+- transcript: the items on one short line with their amounts, like "Paneer tikka 320, Butter \
+naan x2 120, GST 22". Empty if you can't read them.
+- settlements, transfers, ignored, i_owe, repaid: empty.
+- questions: empty, unless the images aren't a receipt or the total can't be read. Then return \
+no expenses and one short question that says what's wrong ("I can't read the total. Can you \
+scan it again in better light?").
 """
 
 

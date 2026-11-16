@@ -24,10 +24,11 @@ DEFAULT_CATEGORIES: list[tuple[str, str, str]] = [
     ("Other", "📦", "#64748b"),
 ]
 
-# (name, kind, bank_code, is_primary)
+# (name, kind, bank_code, is_primary). Plain names that fit anyone: "Bank" covers UPI, cards and
+# net banking, and is where an entry goes when you don't say how you paid. People rename it or
+# add their own (routes/accounts.py). Until 2026-11-14 everyone got the first user's own banks.
 DEFAULT_ACCOUNTS: list[tuple[str, str, str | None, bool]] = [
-    ("Kotak", "bank", "kotak", True),
-    ("DNS Bank", "bank", "dns", False),
+    ("Bank", "bank", None, True),
     ("Cash", "cash", None, False),
 ]
 

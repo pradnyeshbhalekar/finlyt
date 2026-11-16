@@ -1,10 +1,11 @@
 // The weekly check-in, on the day you chose: a short chat with Finlyt about the week ahead.
 // When Finlyt asks something it offers answers to tap (or you type your own). It ends in a plan
 // (monthly budget, bigger planned spends, a usual-day limit and optional bigger days) whose
-// numbers you can change before confirming.
-import { router } from "expo-router";
-import { ArrowUp, Check, Mic, Minus, Plus, Square } from "lucide-react-native";
-import { useEffect, useRef, useState, type ComponentRef, type ReactNode } from "react";
+// numbers you can change before confirming. The conversation lives in lib/plan-chat, so leaving
+// the screen keeps it (and a slow reply can notify you); the header's button starts it over.
+import { router, useNavigation } from "expo-router";
+import { ArrowUp, Check, Mic, Minus, Plus, RotateCcw, Square } from "lucide-react-native";
+import { useEffect, useLayoutEffect, useRef, useState, type ComponentRef, type ReactNode } from "react";
 import { ActivityIndicator, Pressable, ScrollView, TextInput, View } from "react-native";
 
 import { Coin, type Mood } from "@/components/brand";
@@ -13,15 +14,17 @@ import { Choices } from "@/components/choices";
 import { MemoryUpdates } from "@/components/memory-updates";
 import { KeyboardAware } from "@/components/keyboard";
 import { Button, Icon, IconButton, Txt, type IconType } from "@/components/ui";
-import { ApiError } from "@/lib/api";
+import { useAuth } from "@/lib/auth";
 import { formatPaise } from "@/lib/money";
 import { getCheckIn, WEEKDAYS } from "@/lib/notifications";
-import { useMeta, usePlanChat, useSavePlan } from "@/lib/queries";
+import { planChat, usePlanChatState } from "@/lib/plan-chat";
+import { useMeta, useSavePlan } from "@/lib/queries";
+import { useQueryClient } from "@tanstack/react-query";
+
+import { SLOW_NOTE, useSlow } from "@/lib/reply-alert";
 import { useDictation } from "@/lib/speech";
 import { BRAND, fonts, useTheme, WHITE } from "@/lib/theme";
-import type { Category, ChatMessage, MemoryUpdate, ProposedPlan } from "@/lib/types";
-
-type Message = ChatMessage & { memory?: MemoryUpdate[] };
+import type { Category, ProposedPlan } from "@/lib/types";
 
 function shortDate(iso: string): string {
   const [y, m, d] = iso.split("-").map(Number);
@@ -242,29 +245,21 @@ function PlanCard({
   );
 }
 
-function explain(e: Error): string {
-  if (e instanceof ApiError && e.status === 404) {
-    return "Planning isn't switched on for your Finlyt server yet. It needs one more backend deploy.";
-  }
-  return e.message;
-}
-
 export default function PlanChat() {
   const { colors } = useTheme();
   const meta = useMeta();
-  const chat = usePlanChat();
+  const navigation = useNavigation();
+  const queryClient = useQueryClient();
+  const { user } = useAuth();
   const save = useSavePlan();
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [plan, setPlan] = useState<ProposedPlan | null>(null);
-  const [planRound, setPlanRound] = useState(0);
-  const [options, setOptions] = useState<string[]>([]);
+  const { messages, plan, planRound, options, pending, error: chatError, saved } = usePlanChatState();
+  const slow = useSlow(pending);
   const [checkInDay, setCheckInDay] = useState(6);
   const inputRef = useRef<ComponentRef<typeof TextInput>>(null);
   const [input, setInput] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [saved, setSaved] = useState(false);
+  const [localError, setError] = useState<string | null>(null);
+  const error = localError ?? chatError;
   const scroll = useRef<ComponentRef<typeof ScrollView>>(null);
-  const opened = useRef(false);
   const dictation = useDictation(setInput, setError);
 
   const categories = new Map((meta.data?.categories ?? []).map((c) => [c.id, c]));
@@ -274,64 +269,58 @@ export default function PlanChat() {
     "budget", "rent", "lakh", "trip", "EMI",
   ];
 
-  function showTurn(turn: { plan: ProposedPlan | null; options?: string[] }) {
-    setPlan(turn.plan);
-    if (turn.plan) setPlanRound((r) => r + 1);
-    setOptions(turn.options ?? []);
-  }
-
-  // Finlyt opens the check-in.
-  function open() {
-    setError(null);
-    chat
-      .mutateAsync([])
-      .then((turn) => {
-        setMessages([{ role: "finlyt", text: turn.reply, memory: turn.memory_updates }]);
-        showTurn(turn);
-      })
-      .catch((e: Error) => setError(explain(e)));
-  }
+  // Pick up the chat where it was left, or let Finlyt open a new one. While this screen is open
+  // the chat asks it whether it's being looked at, to decide if a reply needs a notification.
+  const userId = user?.id ?? null;
   useEffect(() => {
-    if (opened.current) return;
-    opened.current = true;
-    open();
+    planChat.enter(userId);
+    planChat.watch(() => navigation.isFocused());
     void getCheckIn().then((c) => setCheckInDay(c.weekday));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    return () => planChat.watch(null);
+  }, [userId, navigation]);
+
+  // Something Finlyt was told to remember shows up on the memory screen.
+  const remembered = messages.reduce((n, m) => n + (m.memory?.length ?? 0), 0);
+  useEffect(() => {
+    if (remembered > 0) void queryClient.invalidateQueries({ queryKey: ["memory"] });
+  }, [remembered, queryClient]);
+
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      headerRight: () =>
+        messages.length > 1 && !saved ? (
+          <IconButton
+            icon={RotateCcw}
+            label="Start over"
+            tone="muted"
+            onPress={() => {
+              setError(null);
+              planChat.startOver();
+            }}
+          />
+        ) : null,
+    });
+  }, [navigation, messages.length, saved]);
 
   /** Send what's in the box, or a tapped answer. */
-  async function send(answer?: string) {
+  function send(answer?: string) {
     const text = (answer ?? input).trim();
-    if (!text || chat.isPending) return;
-    const next: Message[] = [...messages, { role: "user", text }];
-    setMessages(next);
+    if (!text || pending) return;
     if (answer === undefined) setInput("");
-    setOptions([]);
     setError(null);
-    try {
-      const turn = await chat.mutateAsync(next);
-      setMessages([...next, { role: "finlyt", text: turn.reply, memory: turn.memory_updates }]);
-      showTurn(turn);
-    } catch (e) {
-      setError(explain(e as Error));
-    }
+    planChat.send(text);
   }
 
   async function use(chosen: ProposedPlan) {
     try {
       await save.mutateAsync(chosen);
-      setSaved(true);
-      setOptions([]);
       const limits =
         chosen.big_days_per_week > 0 && chosen.big_day_limit_paise
           ? `${formatPaise(chosen.daily_limit_paise)} on usual days, and up to ${chosen.big_days_per_week} bigger ${
               chosen.big_days_per_week === 1 ? "day" : "days"
             } a week at ${formatPaise(chosen.big_day_limit_paise)}`
           : `${formatPaise(chosen.daily_limit_paise)} a day`;
-      setMessages((list) => [
-        ...list,
-        { role: "finlyt", text: `Done. ${limits} from today. See you on ${WEEKDAYS[checkInDay]}.` },
-      ]);
+      planChat.finish(`Done. ${limits} from today. See you on ${WEEKDAYS[checkInDay]}.`);
     } catch (e) {
       setError((e as Error).message);
     }
@@ -346,7 +335,7 @@ export default function PlanChat() {
     if (!started) setError("Voice input isn't available on this phone. You can type instead.");
   }
 
-  const canSend = input.trim().length > 0 && !chat.isPending && !dictation.listening;
+  const canSend = input.trim().length > 0 && !pending && !dictation.listening;
 
   return (
     <View className="flex-1 bg-bg">
@@ -369,15 +358,20 @@ export default function PlanChat() {
             <YouSay key={i} text={m.text} />
           ),
         )}
-        {chat.isPending ? (
+        {pending ? (
           <FinlytSays mood="thinking">
             <ActivityIndicator color={colors.muted} />
+            {slow ? (
+              <Txt tone="muted" className="mt-2 text-sm">
+                {SLOW_NOTE}
+              </Txt>
+            ) : null}
           </FinlytSays>
         ) : null}
-        {!chat.isPending && !saved ? (
-          <Choices options={options} onPick={(answer) => void send(answer)} onOther={() => inputRef.current?.focus()} />
+        {!pending && !saved ? (
+          <Choices options={options} onPick={(answer) => send(answer)} onOther={() => inputRef.current?.focus()} />
         ) : null}
-        {plan && !saved && !chat.isPending ? (
+        {plan && !saved && !pending ? (
           <PlanCard
             key={planRound}
             plan={plan}
@@ -396,8 +390,8 @@ export default function PlanChat() {
             <Txt tone="danger" className="text-sm">
               {error}
             </Txt>
-            {messages.length === 0 && !chat.isPending ? (
-              <Button label="Try again" variant="secondary" onPress={open} className="mt-3 self-start" />
+            {messages.length === 0 && !pending ? (
+              <Button label="Try again" variant="secondary" onPress={planChat.retry} className="mt-3 self-start" />
             ) : null}
           </View>
         ) : null}
@@ -424,7 +418,7 @@ export default function PlanChat() {
               tone={dictation.listening ? "danger" : "muted"}
             />
             <Pressable
-              onPress={() => void send()}
+              onPress={() => send()}
               disabled={!canSend}
               accessibilityRole="button"
               accessibilityLabel="Send"

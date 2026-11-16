@@ -11,6 +11,7 @@ import {
   ChartColumn,
   Download,
   LayoutGrid,
+  Landmark,
   LogOut,
   MessageSquareHeart,
   Pencil,
@@ -132,6 +133,12 @@ export default function Settings() {
               label="Check before saving"
             />
           }
+        />
+        <GroupItem
+          icon={Landmark}
+          title="Your accounts"
+          subtitle={(meta.data?.accounts ?? []).map((a) => a.name).join(", ") || "The ways you pay"}
+          onPress={() => router.push("/accounts")}
         />
         <GroupItem icon={Pencil} title="Add an entry by hand" onPress={() => router.push("/expense/new")} />
       </Group>

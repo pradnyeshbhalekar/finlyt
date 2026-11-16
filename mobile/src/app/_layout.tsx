@@ -164,6 +164,7 @@ function RootNavigator({ fontsLoaded }: { fontsLoaded: boolean }) {
         <Stack.Screen name="goals" options={{ ...header, title: "Savings goals" }} />
         <Stack.Screen name="goal/[id]" options={{ ...header, title: "Goal" }} />
         <Stack.Screen name="settings" options={{ ...header, title: "Settings" }} />
+        <Stack.Screen name="accounts" options={{ ...header, title: "Your accounts" }} />
         <Stack.Screen
           name="expense/[id]"
           options={{
@@ -176,10 +177,12 @@ function RootNavigator({ fontsLoaded }: { fontsLoaded: boolean }) {
         />
         <Stack.Screen name="plan/chat" options={{ ...header, title: "Check-in" }} />
         <Stack.Screen name="log/review" options={{ ...header, title: "Check entries" }} />
+        <Stack.Screen name="expense/edit" options={{ ...header, presentation: "modal", title: "Edit entry" }} />
         <Stack.Screen
           name="expense/new"
           options={{ ...header, presentation: "modal", title: "Add by hand" }}
         />
+        <Stack.Screen name="receipt" options={{ ...header, presentation: "modal", title: "Scan a receipt" }} />
       </Stack.Protected>
       <Stack.Protected guard={signedIn && !prefs.onboarded}>
         <Stack.Screen name="onboarding" />

@@ -1,14 +1,18 @@
 {
   "expo": {
     "name": "Finlyt",
-    "slug": "finlyt",
-    "version": "0.1.5",
+    "slug": "pradnyesh",
+    "version": "0.1.7",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "finlyt",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "bundleIdentifier": "com.finlyt.app"
+      "bundleIdentifier": "com.finlyt.app",
+      "infoPlist": {
+        "NSSpeechRecognitionUsageDescription": "Finlyt turns what you say into text so it can log your spending.",
+        "NSMicrophoneUsageDescription": "Finlyt listens when you tap the mic so you can say what you spent."
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -18,7 +22,11 @@
       },
       "predictiveBackGestureEnabled": false,
       "package": "com.finlyt.app",
-      "versionCode": 8
+      "versionCode": 10,
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS"
+      ]
     },
     "web": {
       "output": "static",
@@ -130,11 +138,30 @@
           ]
         }
       ],
-      "./plugins/with-splash-themes.js"
+      "./plugins/with-splash-themes.js",
+      "./plugins/with-release-signing.js",
+      "./plugins/with-gradle-memory.js"
     ],
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
-    }
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/ed2c1d0d-ce65-4733-a49a-5a12c34893d5",
+      "requestHeaders": {
+        "expo-channel-name": "production"
+      },
+      "checkAutomatically": "ON_LOAD",
+      "fallbackToCacheTimeout": 0
+    },
+    "extra": {
+      "eas": {
+        "projectId": "ed2c1d0d-ce65-4733-a49a-5a12c34893d5"
+      }
+    },
+    "owner": "pradnyeshhhs-team"
   }
 }

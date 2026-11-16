@@ -19,6 +19,7 @@ function Chip({ label, selected, onPress }: { label: string; selected: boolean; 
       onPress={onPress}
       accessibilityRole="radio"
       accessibilityState={{ selected }}
+      hitSlop={{ top: 8, bottom: 8 }}
       className={`rounded-full px-3.5 py-1.5 ${selected ? "bg-brand" : "border border-line active:bg-surface"}`}
     >
       <Txt weight="medium" tone={selected ? "onBrand" : "fg"} className="text-sm">

@@ -217,11 +217,11 @@ function Overview({ reviewBeforeSave }: { reviewBeforeSave: boolean }) {
           Here&apos;s what Finlyt does. Then I&apos;ll show you where each thing is on your screen.
         </Txt>
 
-        <SectionLabel className="mb-2.5 mt-6">Log what you spent, 3 ways</SectionLabel>
+        <SectionLabel className="mb-2.5 mt-6">Log what you spent</SectionLabel>
         <View className="gap-2">
           <Way icon={KeyboardIcon} title="Type it" text="“chai 40 cash, auto 120” in the box on Home" />
           <Way icon={Mic} title="Say it" text="Tap the mic and talk" />
-          <Way icon={Plus} title="Fill in a form" text="Tap + for the amount, what it was and how you paid" />
+          <Way icon={Plus} title="Or tap +" text="Scan a receipt, paste a bank SMS, or fill in a form" />
         </View>
         <Txt tone="muted" className="mt-2.5 text-sm" style={{ lineHeight: 19 }}>
           {reviewBeforeSave
@@ -251,7 +251,7 @@ export function TourHost() {
   const { width: W, height: H } = useWindowDimensions();
   const pathname = usePathname();
   const reduceMotion = useReducedMotion();
-  const steps = tourSteps(prefs.reviewBeforeSave);
+  const steps = tourSteps(prefs.reviewBeforeSave, options.from === "onboarding");
   const last = steps.length - 1;
   const current: TourStep | undefined = active ? steps[Math.min(step, last)] : undefined;
   const [gaveUp, setGaveUp] = useState(-1); // the round we stopped waiting for a target in
@@ -427,7 +427,7 @@ export function TourHost() {
                 {[
                   { icon: KeyboardIcon, label: "Type it" },
                   { icon: Mic, label: "Say it" },
-                  { icon: Plus, label: "Fill a form" },
+                  { icon: Plus, label: "Scan, paste, form" },
                 ].map((w) => (
                   <View key={w.label} className="flex-1 items-center gap-1.5 rounded-2xl bg-surface py-3">
                     <Icon icon={w.icon} size={20} tone="accent" />

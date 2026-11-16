@@ -8,9 +8,11 @@ the database.
 
 from __future__ import annotations
 
+import base64
 import json
 import logging
-from typing import Callable, Protocol
+import time
+from typing import Callable, Iterator, Protocol
 
 import httpx
 
@@ -25,16 +27,66 @@ log = logging.getLogger(__name__)
 # Tried in order until one answers; GEMINI_MODEL overrides this with a comma-separated list.
 # Each model has its own free-tier daily quota. On 2026-11-05 the Flash models allowed only 20
 # requests a day (a 429 said "limit: 20"), so the Flash-Lite models (about 500 a day) come after
-# them, and Groq after all of these (see FallbackProposer).
+# them, and Groq after all of these (see FallbackProposer). Since 2026-11-16 the stable
+# gemini-2.5-flash goes first: the 3.x previews were taking 26–40 s or refusing ("high demand")
+# while it answered in about a second. A 429 costs well under a second, so a used-up quota
+# just moves things along (and that model cools down; see attempts()).
 DEFAULT_MODELS = (
+    "gemini-2.5-flash",
     "gemini-3.5-flash",
     "gemini-3.8-flash",
-    "gemini-2.5-flash",
     "gemini-3.5-flash-lite",
     "gemini-3.1-flash-lite",
 )
 # Overloaded or rate-limited: worth trying the next model. Anything else is our problem.
 FALLBACK_CODES = {429, 500, 503, 504}
+
+# How long a model gets before we move on to the next. A healthy Flash model reads a note in
+# 1–8 s. On 2026-11-16 gemini-3.5-flash took 26 s to say "ok" and 40 s to fail, and 3.8-flash
+# was "high demand", so every log and Ask took ~80 s before gemini-2.5-flash answered in 1 s.
+# The last model in line gets the full time; the whole request stays under Vercel's 120 s.
+FIRST_TRIES_MS = 15_000
+FIRST_TRIES_HEAVY_MS = 30_000  # voice notes, receipt photos, long imported chats
+LAST_TRY_MS = 40_000
+BUDGET_S = 95
+# When Groq is set up and can take the request, Gemini gets less time before Groq answers
+# (usually in 1–2 s). Voice notes can't go to Groq, so they keep the full budget.
+HANDOFF_S = 20
+HANDOFF_HEAVY_S = 45
+
+# A model that just failed or timed out goes to the back of the line for a while, so the next
+# requests (on this server instance) start with one that's answering.
+COOLDOWN_S = 600
+_cooling: dict[str, float] = {}
+
+
+def model_order(models: list[str]) -> list[str]:
+    """Models in their configured order, except those cooling down after a failure go last
+    (soonest-recovered first), so they're still tried if nothing else answers."""
+    now = time.monotonic()
+    ready = [m for m in models if _cooling.get(m, 0.0) <= now]
+    cooling = sorted((m for m in models if _cooling.get(m, 0.0) > now), key=lambda m: _cooling[m])
+    return ready + cooling
+
+
+def cool_down(model: str) -> None:
+    _cooling[model] = time.monotonic() + COOLDOWN_S
+
+
+def recovered(model: str) -> None:
+    _cooling.pop(model, None)
+
+
+def attempts(models: list[str], *, heavy: bool = False, budget_s: float = BUDGET_S) -> Iterator[tuple[str, int]]:
+    """Each model to try, best bet first, with its time limit in ms, within the request budget."""
+    order = model_order(models)
+    start = time.monotonic()
+    for i, model in enumerate(order):
+        left_ms = int((budget_s - (time.monotonic() - start)) * 1000)
+        if left_ms < 5_000:
+            return
+        limit = LAST_TRY_MS if i == len(order) - 1 else (FIRST_TRIES_HEAVY_MS if heavy else FIRST_TRIES_MS)
+        yield model, min(limit, left_ms)
 
 
 class GPayment(BaseModel):
@@ -97,11 +149,22 @@ class GProposal(BaseModel):
     repaid: list[GRepay] = Field(default_factory=list, description="Me paying someone back what I owed them")
 
 
+# A photo sent with a note: (bytes, mime type), e.g. a scanned receipt as image/jpeg.
+Image = tuple[bytes, str]
+
+
 class Proposer(Protocol):
     def __call__(
-        self, *, system: str, prompt: str, audio: bytes | None, audio_mime: str | None
+        self,
+        *,
+        system: str,
+        prompt: str,
+        audio: bytes | None,
+        audio_mime: str | None,
+        images: list[Image] | None = None,
     ) -> tuple[GProposal, str]:
-        """Returns the proposal and the model that wrote it."""
+        """Returns the proposal and the model that wrote it. `images` are only passed when there
+        are some, so fakes written before receipts don't need the argument."""
         ...
 
 
@@ -186,11 +249,20 @@ class _Gemini:
         )
         configured = [m.strip() for m in (settings.gemini_model or "").split(",") if m.strip()]
         self.models = configured or list(DEFAULT_MODELS)
+        # Set by get_*() when Groq is there to take over: then Gemini hands over sooner.
+        self.handoff = False
 
-    def _generate(self, *, system: str, contents, schema: type[BaseModel]):
+    def _budget(self, *, heavy: bool, groq_can_help: bool = True) -> float:
+        if self.handoff and groq_can_help:
+            return HANDOFF_HEAVY_S if heavy else HANDOFF_S
+        return BUDGET_S
+
+    def _generate(
+        self, *, system: str, contents, schema: type[BaseModel], heavy: bool = False, groq_can_help: bool = True
+    ):
         from google.genai import errors, types
 
-        def config_for(model: str) -> types.GenerateContentConfig:
+        def config_for(model: str, limit_ms: int) -> types.GenerateContentConfig:
             # Gemini 3 models take a thinking level; 2.5 uses a token budget instead.
             thinking = (
                 types.ThinkingConfig(thinking_level=types.ThinkingLevel.LOW)
@@ -202,22 +274,31 @@ class _Gemini:
                 response_mime_type="application/json",
                 response_json_schema=schema.model_json_schema(),
                 thinking_config=thinking,
+                http_options=types.HttpOptions(timeout=limit_ms),
             )
 
         last_code: int | None = None
-        for model in self.models:
+        budget_s = self._budget(heavy=heavy, groq_can_help=groq_can_help)
+        for model, limit_ms in attempts(self.models, heavy=heavy, budget_s=budget_s):
             try:
                 response = self._client.models.generate_content(
-                    model=model, contents=contents, config=config_for(model)
+                    model=model, contents=contents, config=config_for(model, limit_ms)
                 )
             except errors.APIError as e:
                 log.warning("Gemini %s failed: %s %s", model, e.code, e.message)
                 last_code = e.code
                 if e.code in FALLBACK_CODES:
+                    cool_down(model)
                     continue
                 raise ApiError(
                     502, "gemini_error", f"Gemini couldn't process this ({e.code}). Try again."
                 ) from e
+            except httpx.TransportError as e:  # our own timeout, or the network dropped
+                log.warning("Gemini %s didn't answer in %d ms: %s", model, limit_ms, e)
+                last_code = 504
+                cool_down(model)
+                continue
+            recovered(model)
             try:
                 return schema.model_validate_json(response.text or ""), model
             except ValidationError as e:
@@ -232,15 +313,25 @@ class _Gemini:
 
 class GeminiProposer(_Gemini):
     def __call__(
-        self, *, system: str, prompt: str, audio: bytes | None, audio_mime: str | None
+        self,
+        *,
+        system: str,
+        prompt: str,
+        audio: bytes | None,
+        audio_mime: str | None,
+        images: list[Image] | None = None,
     ) -> tuple[GProposal, str]:
         from google.genai import types
 
         parts = []
+        for data, mime in images or []:
+            parts.append(types.Part.from_bytes(data=data, mime_type=mime))
         if audio:
             parts.append(types.Part.from_bytes(data=audio, mime_type=audio_mime or "audio/aac"))
         parts.append(types.Part.from_text(text=prompt))
-        return self._generate(system=system, contents=parts, schema=GProposal)
+        return self._generate(
+            system=system, contents=parts, schema=GProposal, heavy=bool(audio or images), groq_can_help=not audio
+        )
 
 
 class GeminiPlanner(_Gemini):
@@ -264,31 +355,80 @@ class GeminiPlanner(_Gemini):
 
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
 DEFAULT_GROQ_MODEL = "openai/gpt-oss-120b"
+# Reads receipt photos. On 2026-11-16 this account had no Llama 4 vision models; Qwen read a test
+# receipt (grand total, date, cash, items) in 1.2 s with the JSON schema.
+DEFAULT_GROQ_VISION_MODEL = "qwen/qwen3.8-27b"
+GROQ_MAX_WAIT_S = 6
+# Groq takes base64 images up to 4 MB per request.
+MAX_GROQ_IMAGE_B64 = 4 * 1024 * 1024 - 64 * 1024
 
 
 class GroqJson:
     """Groq's OpenAI-compatible chat API with structured JSON output, checked with Pydantic.
 
-    Text only (Groq takes no audio). Asks for a JSON-schema response first; if Groq rejects the
+    Text, and photos (receipts) through a vision model; not audio (its Whisper refuses the AAC
+    voice notes the app records). Asks for a JSON-schema response first; if Groq rejects the
     schema, retries in plain JSON mode with the schema written into the instructions.
     """
 
-    def __init__(self, api_key: str, model: str | None = None, http: httpx.Client | None = None) -> None:
+    def __init__(
+        self,
+        api_key: str,
+        model: str | None = None,
+        http: httpx.Client | None = None,
+        vision_model: str | None = None,
+    ) -> None:
         self.api_key = api_key
         self.model = model or DEFAULT_GROQ_MODEL
+        self.vision_model = vision_model or DEFAULT_GROQ_VISION_MODEL
         self._http = http or httpx.Client(timeout=30)
+
+    @staticmethod
+    def _with_images(messages: list[dict], images: list[Image]) -> list[dict]:
+        """The images go into the last user message, as data URLs, after its text."""
+        parts = []
+        size = 0
+        for data, mime in images:
+            encoded = base64.b64encode(data).decode()
+            size += len(encoded)
+            parts.append({"type": "image_url", "image_url": {"url": f"data:{mime};base64,{encoded}"}})
+        if size > MAX_GROQ_IMAGE_B64:
+            raise ApiError(413, "groq_image_too_big", "That receipt is too big for the backup reader. Scan it again.")
+        out = [dict(m) for m in messages] or [{"role": "user", "content": ""}]
+        last = out[-1]
+        text = last.get("content") or ""
+        last["content"] = [{"type": "text", "text": text}, *parts] if text else parts
+        return out
 
     def _post(self, body: dict) -> httpx.Response:
         try:
-            return self._http.post(GROQ_URL, json=body, headers={"Authorization": f"Bearer {self.api_key}"})
+            response = self._http.post(GROQ_URL, json=body, headers={"Authorization": f"Bearer {self.api_key}"})
         except httpx.HTTPError as e:
             log.warning("Groq unreachable: %s", e)
             raise ApiError(503, "groq_unreachable", "Groq couldn't be reached. Try again.") from e
+        # Free-tier limits are per minute (8,000 tokens for the vision model in Nov 2026). A short
+        # wait is worth it; a long one isn't, so that fails with a clear message instead.
+        if response.status_code == 429:
+            try:
+                wait = float(response.headers.get("retry-after", ""))
+            except ValueError:
+                wait = None
+            if wait is not None and wait <= GROQ_MAX_WAIT_S:
+                log.warning("Groq %s rate-limited; retrying in %.1f s", body.get("model"), wait)
+                time.sleep(wait)
+                try:
+                    response = self._http.post(GROQ_URL, json=body, headers={"Authorization": f"Bearer {self.api_key}"})
+                except httpx.HTTPError as e:
+                    raise ApiError(503, "groq_unreachable", "Groq couldn't be reached. Try again.") from e
+        return response
 
-    def generate(self, *, system: str, messages: list[dict], schema: type[BaseModel]):
+    def generate(self, *, system: str, messages: list[dict], schema: type[BaseModel], images: list[Image] | None = None):
         schema_json = schema.model_json_schema()
+        model = self.vision_model if images else self.model
+        if images:
+            messages = self._with_images(messages, images)
         body = {
-            "model": self.model,
+            "model": model,
             "temperature": 0.2,
             "messages": [{"role": "system", "content": system}, *messages],
             "response_format": {"type": "json_schema", "json_schema": {"name": schema.__name__, "schema": schema_json}},
@@ -302,20 +442,41 @@ class GroqJson:
                 "content": f"{system}\n\nReply with only a JSON object matching this JSON Schema:\n{json.dumps(schema_json)}",
             }
             response = self._post(body)
-        self._check(response)
+        self._check(response, model)
         try:
             content = response.json()["choices"][0]["message"]["content"] or ""
-            return schema.model_validate_json(content), f"groq/{self.model}"
-        except (ValueError, KeyError, IndexError, ValidationError) as e:
-            log.warning("Groq %s returned an unexpected shape: %s", self.model, e)
+        except (ValueError, KeyError, IndexError) as e:
+            raise ApiError(502, "groq_bad_output", "Groq's answer wasn't readable. Try again.") from e
+        try:
+            return schema.model_validate_json(content), f"groq/{model}"
+        except ValidationError as e:
+            if images and content.strip():
+                # The vision model read the photo but doesn't always keep to the schema (on
+                # 2026-11-16 it once answered {"amount": 462, ...}). The text model does: let it
+                # put what was read into the right shape.
+                log.warning("Groq %s read the photo off-schema; reshaping with %s", model, self.model)
+                read = f"A vision model read the attached receipt and wrote this:\n{content}"
+                text = next((m.get("content") for m in reversed(messages) if m.get("role") == "user"), "")
+                if isinstance(text, list):
+                    text = " ".join(p.get("text", "") for p in text if isinstance(p, dict))
+                parsed, _ = self.generate(
+                    system=system, messages=[{"role": "user", "content": f"{text}\n\n{read}"}], schema=schema
+                )
+                return parsed, f"groq/{model}+{self.model}"
+            log.warning("Groq %s returned an unexpected shape: %s", model, e)
             raise ApiError(502, "groq_bad_output", "Groq's answer wasn't in the expected shape. Try again.") from e
 
-    def _check(self, response: httpx.Response) -> None:
+    def _check(self, response: httpx.Response, model: str | None = None) -> None:
+        model = model or self.model
         if response.status_code in FALLBACK_CODES:
-            log.warning("Groq %s busy: %s", self.model, response.status_code)
-            raise ApiError(503, "groq_busy", f"Groq is busy right now ({response.status_code}).")
+            log.warning("Groq %s busy: %s %s", model, response.status_code, response.text[:300])
+            raise ApiError(
+                503,
+                "groq_busy",
+                f"Gemini and the backup (Groq) are both busy right now ({response.status_code}). Try again in a minute.",
+            )
         if response.status_code >= 400:
-            log.warning("Groq %s failed: %s %s", self.model, response.status_code, response.text[:300])
+            log.warning("Groq %s failed: %s %s", model, response.status_code, response.text[:300])
             raise ApiError(502, "groq_error", f"Groq couldn't process this ({response.status_code}).")
 
 
@@ -357,25 +518,34 @@ class GroqJson:
 
 
 class FallbackProposer:
-    """Gemini first; Groq if Gemini fails (text only: a voice note can't go to Groq)."""
+    """Gemini first; Groq if Gemini fails (text only: a voice note or a photo can't go to Groq)."""
 
     def __init__(self, gemini: Proposer | None, groq: GroqJson | None) -> None:
         self.gemini = gemini
         self.groq = groq
 
     def __call__(
-        self, *, system: str, prompt: str, audio: bytes | None, audio_mime: str | None
+        self,
+        *,
+        system: str,
+        prompt: str,
+        audio: bytes | None,
+        audio_mime: str | None,
+        images: list[Image] | None = None,
     ) -> tuple[GProposal, str]:
         failure: ApiError | None = None
+        extra = {"images": images} if images else {}
         if self.gemini is not None:
             try:
-                return self.gemini(system=system, prompt=prompt, audio=audio, audio_mime=audio_mime)
+                return self.gemini(system=system, prompt=prompt, audio=audio, audio_mime=audio_mime, **extra)
             except ApiError as e:
                 failure = e
         if self.groq is not None and not audio:
             if failure is not None:
-                log.warning("Gemini failed (%s); trying Groq", failure.code)
-            return self.groq.generate(system=system, messages=[{"role": "user", "content": prompt}], schema=GProposal)
+                log.warning("Gemini failed (%s); trying Groq%s", failure.code, " with the photos" if images else "")
+            return self.groq.generate(
+                system=system, messages=[{"role": "user", "content": prompt}], schema=GProposal, **extra
+            )
         raise failure or ApiError(503, "not_configured", "No AI model is set up on the server")
 
 
@@ -470,7 +640,7 @@ class GeminiImportFixer(_Gemini):
     def __call__(self, *, system: str, text: str) -> tuple[GImport, str]:
         from google.genai import types
 
-        return self._generate(system=system, contents=[types.Part.from_text(text=text)], schema=GImport)
+        return self._generate(system=system, contents=[types.Part.from_text(text=text)], schema=GImport, heavy=True)
 
 
 class FallbackImportFixer:
@@ -544,7 +714,7 @@ class GeminiAgent(_Gemini):
             for t in tools
         ]
         last_code: int | None = None
-        for model in self.models:
+        for model, limit_ms in attempts(self.models, budget_s=self._budget(heavy=False)):
             contents = [
                 types.Content(role="model" if role == "finlyt" else "user", parts=[types.Part.from_text(text=text)])
                 for role, text in messages
@@ -560,6 +730,7 @@ class GeminiAgent(_Gemini):
                     if model.startswith("gemini-3")
                     else types.ThinkingConfig(thinking_budget=1024)
                 ),
+                http_options=types.HttpOptions(timeout=limit_ms),
             )
             used: list[str] = []
             try:
@@ -567,6 +738,7 @@ class GeminiAgent(_Gemini):
                     response = self._client.models.generate_content(model=model, contents=contents, config=config)
                     calls = response.function_calls or []
                     if not calls:
+                        recovered(model)
                         return _final_text(response) or GAVE_UP, model, used
                     contents.append(response.candidates[0].content)
                     parts = []
@@ -577,11 +749,18 @@ class GeminiAgent(_Gemini):
                     contents.append(types.Content(role="user", parts=parts))
                 return GAVE_UP, model, used
             except FinishTurn as done:
+                recovered(model)
                 return done.reply, model, used
+            except httpx.TransportError as e:  # our own timeout, or the network dropped
+                log.warning("Gemini %s didn't answer in %d ms: %s", model, limit_ms, e)
+                last_code = 504
+                cool_down(model)
+                continue
             except errors.APIError as e:
                 log.warning("Gemini %s failed answering: %s %s", model, e.code, e.message)
                 last_code = e.code
                 if e.code in FALLBACK_CODES:
+                    cool_down(model)
                     continue
                 raise ApiError(502, "gemini_error", f"Gemini couldn't answer that ({e.code}). Try again.") from e
         raise ApiError(503, "gemini_busy", f"Gemini is busy right now ({last_code}). Try again in a minute.")
@@ -611,7 +790,11 @@ def _providers() -> tuple[Settings, GroqJson | None]:
     settings: Settings = current_app.config["SETTINGS"]
     if not settings.gemini_api_key and not settings.groq_api_key:
         raise ApiError(503, "not_configured", "GEMINI_API_KEY isn't set on the server")
-    groq = GroqJson(settings.groq_api_key, settings.groq_model) if settings.groq_api_key else None
+    groq = (
+        GroqJson(settings.groq_api_key, settings.groq_model, vision_model=settings.groq_vision_model)
+        if settings.groq_api_key
+        else None
+    )
     return settings, groq
 
 
@@ -621,6 +804,8 @@ def get_proposer() -> Proposer:
     if "finlyt.gemini" not in extensions:
         settings, groq = _providers()
         gemini = GeminiProposer(settings) if settings.gemini_api_key else None
+        if gemini is not None:
+            gemini.handoff = groq is not None
         extensions["finlyt.gemini"] = FallbackProposer(gemini, groq)
     return extensions["finlyt.gemini"]
 
@@ -631,6 +816,8 @@ def get_agent() -> Agent:
     if "finlyt.agent" not in extensions:
         settings, groq = _providers()
         gemini = GeminiAgent(settings) if settings.gemini_api_key else None
+        if gemini is not None:
+            gemini.handoff = groq is not None
         extensions["finlyt.agent"] = FallbackAgent(gemini, groq)
     return extensions["finlyt.agent"]
 
@@ -640,6 +827,8 @@ def get_import_fixer() -> ImportFixer:
     if "finlyt.import_fixer" not in extensions:
         settings, groq = _providers()
         gemini = GeminiImportFixer(settings) if settings.gemini_api_key else None
+        if gemini is not None:
+            gemini.handoff = groq is not None
         extensions["finlyt.import_fixer"] = FallbackImportFixer(gemini, groq)
     return extensions["finlyt.import_fixer"]
 
@@ -649,5 +838,7 @@ def get_planner() -> Planner:
     if "finlyt.planner" not in extensions:
         settings, groq = _providers()
         gemini = GeminiPlanner(settings) if settings.gemini_api_key else None
+        if gemini is not None:
+            gemini.handoff = groq is not None
         extensions["finlyt.planner"] = FallbackPlanner(gemini, groq)
     return extensions["finlyt.planner"]

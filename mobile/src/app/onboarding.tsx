@@ -1,50 +1,51 @@
-// First run after signing in, one thing at a time: hello, check-in times, how to save what you
-// tell it, importing from an AI chat, and the weekly planning check-in (day and time). Each step
-// opens with a picture made of the app's own pieces (the coin in its rings, a reminder as it shows
-// on the phone, a plan card), then a title, a line or two and its choices, which come in one after
-// another. Finishing starts the guided tour of the real app (lib/tour).
+// First run after signing in, one thing at a time: how Finlyt works in three lines, a practice
+// box where you log one expense to see what happens (nothing is saved; the "check before saving"
+// choice sits under it, where it now means something), reminder times, importing from an AI chat,
+// and the weekly planning check-in (day and time). Each step has one main button at the bottom,
+// in reach of a thumb. Finishing starts the guided tour of the real app (lib/tour).
 import { router, useLocalSearchParams } from "expo-router";
 import {
-  Bell,
+  ArrowUp,
   CalendarClock,
+  ChartColumn,
   Check,
   ChevronLeft,
   ClipboardPaste,
   Copy,
-  CircleCheck,
   MessageSquareText,
-  Mic,
-  Target,
-  Undo2,
-  Zap,
+  Sparkles,
   type LucideIcon,
 } from "lucide-react-native";
 import { useState, type ReactNode } from "react";
-import { Pressable, ScrollView, View } from "react-native";
+import { Keyboard, Pressable, ScrollView, TextInput, View } from "react-native";
 import Animated, { FadeInDown } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Coin } from "@/components/brand";
+import { CategoryBadge } from "@/components/category-icon";
 import { CoinHero, PlanPreview, ReminderPreview } from "@/components/hero-art";
 import { ReminderEditor } from "@/components/reminder-editor";
 import { formatClock, TimePickerSheet } from "@/components/time-picker";
-import { Button, Icon, IconButton, Row, Screen, Txt } from "@/components/ui";
+import { Button, Icon, IconButton, Row, Screen, SwitchRow, Txt } from "@/components/ui";
 import { useAuth } from "@/lib/auth";
 import { importGate } from "@/lib/import-gate";
 import {
   DEFAULT_CHECK_IN,
   DEFAULT_REMINDERS,
+  ensureNotificationPermission,
   saveCheckIn,
   saveReminderTimes,
   WEEKDAYS,
   type CheckIn,
   type ReminderTime,
 } from "@/lib/notifications";
+import { formatPaise } from "@/lib/money";
+import { practiceParse, type PracticeEntry } from "@/lib/practice";
 import { usePrefs } from "@/lib/prefs";
-import { BRAND, useTheme, WHITE } from "@/lib/theme";
+import { BRAND, fonts, useTheme, WHITE } from "@/lib/theme";
 import { tour, TOUR_VERSION } from "@/lib/tour";
 
-type Step = "welcome" | "checkins" | "saving" | "import" | "plan";
+type Step = "welcome" | "try" | "checkins" | "import" | "plan";
 
 /** Wraps a piece of a step so it slides in after the ones before it. */
 function In({ i, children }: { i: number; children: ReactNode }) {
@@ -67,106 +68,135 @@ function Lead({ children }: { children: ReactNode }) {
   );
 }
 
-/** One of the four things Finlyt does, as a small card in a two-column grid. */
-function Feature({ icon, title, text }: { icon: LucideIcon; title: string; text: string }) {
-  return (
-    <View className="flex-1 rounded-3xl bg-surface p-4">
-      <View className="h-9 w-9 items-center justify-center rounded-full bg-accent-soft">
-        <Icon icon={icon} size={17} tone="accent" />
-      </View>
-      <Txt weight="semibold" className="mt-3 text-base">
-        {title}
-      </Txt>
-      <Txt tone="muted" className="mt-1 text-sm" style={{ lineHeight: 19 }}>
-        {text}
-      </Txt>
-    </View>
-  );
-}
+/** What people type, to tap instead of typing. */
+const PRACTICE_EXAMPLES = ["chai 40 cash", "auto 120", "lunch 450 with Rahul, he owes 200"];
 
-/** A choice card with a radio dot and a tiny picture of what it means. */
-function Choice({
-  icon,
-  title,
-  text,
-  selected,
-  onPress,
-  preview,
-}: {
-  icon: LucideIcon;
-  title: string;
-  text: string;
-  selected: boolean;
-  onPress: () => void;
-  preview: ReactNode;
-}) {
+/**
+ * Log one expense for practice. Tap an example (or type your own) and see what Finlyt makes of
+ * it: with the check on, a "Look right?" card with Save; with it off, saved straight away.
+ * Read on the phone (lib/practice); nothing is sent or saved.
+ */
+function Practice({ review, onDone }: { review: boolean; onDone: () => void }) {
   const { colors } = useTheme();
+  const [text, setText] = useState("");
+  const [entry, setEntry] = useState<PracticeEntry | null>(null);
+  const [saved, setSaved] = useState(false);
+  const [hint, setHint] = useState<string | null>(null);
+  const [round, setRound] = useState(0);
+
+  function read(words: string) {
+    Keyboard.dismiss();
+    const found = practiceParse(words);
+    setRound((r) => r + 1);
+    setEntry(found);
+    setSaved(found !== null && !review);
+    setHint(found ? null : "Add an amount, like “chai 40”.");
+    if (found && !review) onDone();
+  }
+
+  function tryExample(words: string) {
+    setText(words);
+    read(words);
+  }
+
+  const canSend = text.trim().length > 0;
+  const details = entry
+    ? [entry.category, entry.paidWith, entry.owes ? `${entry.owes.name} owes ${formatPaise(entry.owes.amount * 100)}` : null]
+        .filter(Boolean)
+        .join(" · ")
+    : "";
+
   return (
-    <Pressable
-      onPress={onPress}
-      accessibilityRole="radio"
-      accessibilityState={{ selected }}
-      className={`mb-3 rounded-3xl p-4 ${selected ? "bg-accent-soft" : "bg-surface"}`}
-      style={{ borderWidth: 2, borderColor: selected ? BRAND : "transparent" }}
-    >
-      <View className="flex-row gap-3">
-        <Icon icon={icon} size={22} tone={selected ? "accent" : "muted"} />
-        <View className="flex-1">
-          <Txt weight="semibold" className="text-base">
-            {title}
-          </Txt>
-          <Txt tone="muted" className="mt-1 text-sm" style={{ lineHeight: 20 }}>
-            {text}
-          </Txt>
-        </View>
-        <View
-          className="h-6 w-6 items-center justify-center rounded-full"
-          style={{ borderWidth: 2, borderColor: selected ? BRAND : colors.line, backgroundColor: selected ? BRAND : "transparent" }}
+    <View>
+      <View className="flex-row items-end rounded-[28px] bg-surface p-1.5">
+        <TextInput
+          value={text}
+          onChangeText={(value) => {
+            setText(value);
+            setHint(null);
+          }}
+          onSubmitEditing={() => canSend && read(text)}
+          placeholder="Type what you spent, like “chai 40”"
+          placeholderTextColor={colors.faint}
+          returnKeyType="send"
+          className="min-h-11 flex-1 px-3 py-2.5 text-base text-fg"
+          style={{ fontFamily: fonts.regular }}
+        />
+        <Pressable
+          onPress={() => read(text)}
+          disabled={!canSend}
+          accessibilityRole="button"
+          accessibilityLabel="Send"
+          className="h-11 w-11 items-center justify-center rounded-full"
+          style={{ backgroundColor: BRAND, opacity: canSend ? 1 : 0.3 }}
         >
-          {selected ? <Check size={14} color={WHITE} strokeWidth={3} /> : null}
-        </View>
+          <ArrowUp size={22} color={WHITE} strokeWidth={2} />
+        </Pressable>
       </View>
-      <View className="ml-9 mt-3">{preview}</View>
-    </Pressable>
-  );
-}
 
-/** The quick check, small: "Look right?" with its Save button. */
-function CheckPreview() {
-  const { colors } = useTheme();
-  return (
-    <View className="flex-row items-center gap-3 rounded-2xl px-3 py-2.5" style={{ backgroundColor: colors.bg }}>
-      <View className="flex-1">
-        <Txt weight="medium" className="text-sm">
-          Chai · ₹40
-        </Txt>
-        <Txt tone="muted" className="text-xs">
-          Food · Cash. Look right?
-        </Txt>
+      <View className="mt-3 flex-row flex-wrap gap-2">
+        {PRACTICE_EXAMPLES.map((words) => (
+          <Pressable
+            key={words}
+            onPress={() => tryExample(words)}
+            accessibilityRole="button"
+            accessibilityHint="Tries this example"
+            className="min-h-11 justify-center rounded-full border border-line px-4 active:bg-surface"
+          >
+            <Txt className="text-sm">{words}</Txt>
+          </Pressable>
+        ))}
       </View>
-      <View className="h-8 flex-row items-center gap-1 rounded-full bg-brand px-3">
-        <Check size={13} color={WHITE} strokeWidth={2.4} />
-        <Txt weight="semibold" tone="onBrand" className="text-xs">
-          Save
-        </Txt>
-      </View>
-    </View>
-  );
-}
 
-/** The "Saved · Undo" note, small. */
-function SavedPreview() {
-  const { colors } = useTheme();
-  return (
-    <View className="flex-row items-center gap-2.5 rounded-2xl bg-fg px-3 py-2.5">
-      <Coin size={20} variant="bare" mood="happy" />
-      <Txt weight="medium" tone="inverse" className="flex-1 text-sm">
-        Saved 1 entry
-      </Txt>
-      <Undo2 size={14} color={colors.bg} strokeWidth={1.75} />
-      <Txt weight="semibold" tone="inverse" className="text-xs">
-        Undo
-      </Txt>
+      {hint ? (
+        <Txt tone="muted" className="mt-4 text-sm">
+          {hint}
+        </Txt>
+      ) : null}
+
+      {entry ? (
+        <Animated.View key={round} entering={FadeInDown.duration(350)}>
+          <View className="mt-5 rounded-3xl bg-surface p-4">
+            <Txt weight="semibold" className="text-base">
+              {saved ? "Saved" : "Look right?"}
+            </Txt>
+            <View className="mt-3 flex-row items-center gap-3">
+              <CategoryBadge name={entry.category} size={40} />
+              <View className="flex-1">
+                <Txt weight="medium" className="text-base" numberOfLines={2}>
+                  {entry.description}
+                </Txt>
+                <Txt tone="muted" className="mt-0.5 text-sm">
+                  {details}
+                </Txt>
+              </View>
+              <Txt weight="semibold" className="text-base">
+                {formatPaise((entry.amount - (entry.owes?.amount ?? 0)) * 100)}
+              </Txt>
+            </View>
+            {saved ? (
+              <Animated.View entering={FadeInDown.duration(350)}>
+                <View className="mt-4 flex-row items-center gap-3 rounded-2xl bg-accent-soft p-3">
+                  <Coin size={32} variant="bare" mood="happy" />
+                  <Txt weight="medium" className="flex-1 text-sm" style={{ lineHeight: 20 }}>
+                    That&apos;s all there is to it. Finlyt worked out the amount, the category and how you paid.
+                  </Txt>
+                </View>
+              </Animated.View>
+            ) : (
+              <Button
+                label="Save"
+                icon={Check}
+                onPress={() => {
+                  setSaved(true);
+                  onDone();
+                }}
+                className="mt-4"
+              />
+            )}
+          </View>
+        </Animated.View>
+      ) : null}
     </View>
   );
 }
@@ -201,11 +231,12 @@ export default function Onboarding() {
   const insets = useSafeAreaInsets();
   const prefs = usePrefs();
   const { user } = useAuth();
-  const steps: Step[] = ["welcome", "checkins", "saving", "import", "plan"];
+  const steps: Step[] = ["welcome", "try", "checkins", "import", "plan"];
   const { step: startAt } = useLocalSearchParams<{ step?: string }>();
   const [index, setIndex] = useState(() => Math.max(steps.indexOf(startAt as Step), 0));
   const [times, setTimes] = useState<ReminderTime[]>(DEFAULT_REMINDERS);
   const [review, setReview] = useState(prefs.reviewBeforeSave);
+  const [practised, setPractised] = useState(false);
   const [busy, setBusy] = useState(false);
   const [checkIn, setCheckIn] = useState<CheckIn>(DEFAULT_CHECK_IN);
   const [pickingCheckIn, setPickingCheckIn] = useState(false);
@@ -234,8 +265,8 @@ export default function Onboarding() {
     body = (
       <>
         <In i={0}>
-          <View className="-mx-2 mb-6">
-            <CoinHero size={250} />
+          <View className="-mx-2 mb-4">
+            <CoinHero size={210} />
           </View>
         </In>
         <In i={1}>
@@ -245,24 +276,76 @@ export default function Onboarding() {
         </In>
         <In i={2}>
           <View className="mt-1">
-            <Title>Here&apos;s what Finlyt does for you</Title>
+            <Title>Tracking money, as easy as texting a friend</Title>
           </View>
         </In>
         <In i={3}>
-          <View className="mt-6 flex-row gap-3">
-            <Feature icon={Mic} title="Plain words" text="Type or say “chai 40 cash, auto 120”." />
-            <Feature icon={Bell} title="Reminders" text="A nudge at lunch, evening and night." />
-          </View>
-        </In>
-        <In i={4}>
-          <View className="mt-3 flex-row gap-3">
-            <Feature icon={Target} title="A daily limit" text="A short weekly chat turns your budget into a number." />
-            <Feature icon={ClipboardPaste} title="Your history" text="Tracked spending with an AI? Bring it in." />
+          <View className="mt-6">
+            <Steps
+              items={[
+                {
+                  icon: MessageSquareText,
+                  title: "Tell Finlyt what you spent",
+                  text: "Type or say it in your own words: “chai 40, auto 120 cash”.",
+                },
+                {
+                  icon: Sparkles,
+                  title: "Finlyt sorts it out",
+                  text: "The amount, the category and how you paid. No forms to fill.",
+                },
+                {
+                  icon: ChartColumn,
+                  title: "See where your money goes",
+                  text: "Today, this month, who owes you, and a daily limit to stay under.",
+                },
+              ]}
+            />
           </View>
         </In>
       </>
     );
-    actions = <Button label="Get started" onPress={next} />;
+    actions = (
+      <View>
+        <Button label="Show me how" onPress={next} />
+        <Txt tone="faint" className="mt-3 text-center text-xs">
+          Takes about a minute
+        </Txt>
+      </View>
+    );
+  } else if (step === "try") {
+    body = (
+      <>
+        <In i={0}>
+          <Title>Try it once</Title>
+        </In>
+        <In i={1}>
+          <Lead>Tap an example, or type something you bought today. This is practice, so nothing is saved.</Lead>
+        </In>
+        <In i={2}>
+          <View className="mt-6">
+            {/* A new key when the choice below changes, so the practice starts over with it. */}
+            <Practice key={review ? "check" : "straight"} review={review} onDone={() => setPractised(true)} />
+          </View>
+        </In>
+        <In i={3}>
+          <View className="mt-6 rounded-3xl border border-line px-4 py-1">
+            <SwitchRow
+              title="Check before saving"
+              description={
+                review
+                  ? "Finlyt shows what it understood and you tap Save. Change it any time in Settings."
+                  : "Saved the moment you send it, with an Undo just in case. Change it any time in Settings."
+              }
+              value={review}
+              onChange={setReview}
+            />
+          </View>
+        </In>
+      </>
+    );
+    actions = (
+      <Button label={practised ? "Continue" : "Skip the practice"} variant={practised ? "primary" : "secondary"} onPress={next} />
+    );
   } else if (step === "checkins") {
     body = (
       <>
@@ -279,7 +362,10 @@ export default function Onboarding() {
           <Title>When should I check in?</Title>
         </In>
         <In i={2}>
-          <Lead>I&apos;ll remind you at these times. Tap one to change it, or add another.</Lead>
+          <Lead>
+            It&apos;s easy to forget what you spent. I&apos;ll remind you at these times. Tap one to change it, or add
+            another.
+          </Lead>
         </In>
         <In i={3}>
           <View className="mt-5">
@@ -288,46 +374,22 @@ export default function Onboarding() {
         </In>
       </>
     );
-    actions = <Button label="Continue" onPress={next} />;
-  } else if (step === "saving") {
-    body = (
-      <>
-        <In i={0}>
-          <View className="mb-6">
-            <Coin size={56} variant="bare" mood="thinking" />
-          </View>
-        </In>
-        <In i={1}>
-          <Title>When you tell me what you spent…</Title>
-        </In>
-        <In i={2}>
-          <Lead>You can change this any time in Settings.</Lead>
-        </In>
-        <View className="mt-6">
-          <In i={3}>
-            <Choice
-              icon={CircleCheck}
-              title="Show me first"
-              text="I'll show what I understood. One tap to save, or fix it."
-              selected={review}
-              onPress={() => setReview(true)}
-              preview={<CheckPreview />}
-            />
-          </In>
-          <In i={4}>
-            <Choice
-              icon={Zap}
-              title="Save straight away"
-              text="Saved the moment you send it, with an Undo just in case."
-              selected={!review}
-              onPress={() => setReview(false)}
-              preview={<SavedPreview />}
-            />
-          </In>
-        </View>
-      </>
+    actions = (
+      <Button
+        label="Turn on reminders"
+        loading={busy}
+        onPress={() => {
+          // Asked here, where the reason is on the screen; saying no still moves on.
+          setBusy(true);
+          void ensureNotificationPermission()
+            .catch(() => false)
+            .finally(() => {
+              setBusy(false);
+              next();
+            });
+        }}
+      />
     );
-    actions = <Button label="Continue" onPress={next} />;
   } else if (step === "import") {
     body = (
       <>
@@ -466,7 +528,7 @@ export default function Onboarding() {
         </Txt>
       </View>
       {/* A new key per step replays the entrance animations. */}
-      <ScrollView key={step} className="flex-1" contentContainerClassName="px-6 pb-6 pt-5">
+      <ScrollView key={step} className="flex-1" contentContainerClassName="px-6 pb-6 pt-5" keyboardShouldPersistTaps="handled">
         {body}
       </ScrollView>
       <Animated.View key={`${step}-actions`} entering={FadeInDown.delay(300).duration(400)}>

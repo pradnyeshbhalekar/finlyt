@@ -17,7 +17,7 @@ import { ActivityIndicator, Pressable, SectionList, View } from "react-native";
 import { Coin } from "@/components/brand";
 import { CategoryBadge } from "@/components/category-icon";
 import { ExpenseRow } from "@/components/expense-row";
-import { Icon, Row, Txt } from "@/components/ui";
+import { Button, Icon, Row, Txt } from "@/components/ui";
 import { dayHeading, isoDate, timeLabel } from "@/lib/dates";
 import { formatPaise } from "@/lib/money";
 import { useActivity, useDeleteExpense, useDuplicates, useMeta } from "@/lib/queries";
@@ -195,11 +195,19 @@ export default function History() {
         feed.isLoading ? (
           <ActivityIndicator className="mt-10" color={colors.muted} />
         ) : (
-          <View className="mt-12 items-center">
+          <View className="mt-12 items-center px-8">
             <Coin size={56} variant="bare" mood="default" />
-            <Txt tone="muted" className="mt-3">
-              Nothing here yet.
+            <Txt weight="semibold" className="mt-4 text-lg">
+              Nothing here yet
             </Txt>
+            <Txt tone="muted" className="mt-1 text-center text-sm leading-5">
+              Everything you log shows up here day by day, along with paybacks and plan changes.
+            </Txt>
+            <Button
+              label="Log an expense"
+              onPress={() => router.navigate({ pathname: "/", params: { compose: "type" } })}
+              className="mt-5 self-stretch"
+            />
           </View>
         )
       }

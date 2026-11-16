@@ -1,0 +1,21 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'com.finlyt.app'
+version = '0.1.0'
+
+android {
+  namespace "expo.modules.docscanner"
+  defaultConfig {
+    versionCode 1
+    versionName '0.1.0'
+  }
+}
+
+dependencies {
+  // Google's document scanner: edge detection, crop and clean-up, run by Play services.
+  // No camera permission is needed; the scanner UI is Google's own.
+  implementation 'com.google.android.gms:play-services-mlkit-document-scanner:16.0.0'
+}

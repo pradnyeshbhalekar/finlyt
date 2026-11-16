@@ -18,8 +18,10 @@ export function speechAvailable(): boolean {
 }
 
 /** Indian English, words appear as you speak, stops after a short pause. */
-export function dictationOptions(hints: string[]): ExpoSpeechRecognitionOptions {
+export function dictationOptions(hints: string[], volume = false): ExpoSpeechRecognitionOptions {
   return {
+    // How loud the voice is, for the listening screen's orb (Android sends about 10 a second).
+    ...(volume ? { volumeChangeEventOptions: { enabled: true, intervalMillis: 100 } } : {}),
     lang: "en-IN",
     interimResults: true,
     continuous: false,
@@ -33,31 +35,51 @@ export function dictationOptions(hints: string[]): ExpoSpeechRecognitionOptions 
   };
 }
 
+export type DictationEvents = {
+  /** The box's text with what's been heard so far added, and the heard part on its own. */
+  onText: (text: string, heard: string) => void;
+  onError: (message: string) => void;
+  /** Listening stopped (after a pause, Stop or an error). `heard` is the final words, if any. */
+  onEnd?: (heard: string) => void;
+  /** Loudness from 0 (silence) to 1, about 10 times a second. */
+  onVolume?: (level: number) => void;
+};
+
 /**
  * Talk into a text box: `start(current)` listens and calls `onText(current + what's heard)` as
  * words come in. `onError` gets a short message. `available` is false on builds without speech.
  */
-export function useDictation(onText: (text: string) => void, onError: (message: string) => void) {
+export function useDictation(onText: DictationEvents["onText"], onError: DictationEvents["onError"], more: Omit<DictationEvents, "onText" | "onError"> = {}) {
   const [listening, setListening] = useState(false);
   const before = useRef("");
-  const handlers = useRef({ onText, onError });
+  const heard = useRef("");
+  const aborted = useRef(false);
+  const handlers = useRef<DictationEvents>({ onText, onError, ...more });
   useEffect(() => {
-    handlers.current = { onText, onError };
+    handlers.current = { onText, onError, ...more };
   });
 
   useEffect(() => {
     if (!speech) return;
     const subscriptions = [
       speech.addListener("start", () => setListening(true)),
-      speech.addListener("end", () => setListening(false)),
+      speech.addListener("end", () => {
+        setListening(false);
+        if (!aborted.current) handlers.current.onEnd?.(heard.current);
+      }),
       speech.addListener("result", (event) => {
-        const heard = event.results[0]?.transcript?.trim() ?? "";
+        if (aborted.current) return;
+        const words = event.results[0]?.transcript?.trim() ?? "";
         const base = before.current;
-        handlers.current.onText(base && heard ? `${base} ${heard}` : base || heard);
+        heard.current = words;
+        handlers.current.onText(base && words ? `${base} ${words}` : base || words, words);
+      }),
+      speech.addListener("volumechange", (event) => {
+        handlers.current.onVolume?.(Math.min(Math.max(event.value / 10, 0), 1));
       }),
       speech.addListener("error", (event) => {
         setListening(false);
-        if (event.error === "aborted") return;
+        if (event.error === "aborted" || aborted.current) return;
         handlers.current.onError(
           event.error === "no-speech" || event.error === "speech-timeout"
             ? "Didn't catch that. Tap the mic and try again."
@@ -76,7 +98,9 @@ export function useDictation(onText: (text: string) => void, onError: (message: 
       return true;
     }
     before.current = current.trim();
-    speech.start(dictationOptions(hints));
+    heard.current = "";
+    aborted.current = false;
+    speech.start(dictationOptions(hints, Boolean(handlers.current.onVolume)));
     return true;
   }
 
@@ -84,5 +108,11 @@ export function useDictation(onText: (text: string) => void, onError: (message: 
     speech?.stop();
   }
 
-  return { listening, start, stop, available: speech !== null };
+  /** Stop without using what was heard; `onEnd` isn't called. */
+  function abort() {
+    aborted.current = true;
+    speech?.abort();
+  }
+
+  return { listening, start, stop, abort, available: speech !== null };
 }

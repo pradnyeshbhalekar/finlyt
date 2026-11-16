@@ -90,3 +90,17 @@ export function looksLikeQuestion(text: string): boolean {
   const t = text.trim();
   return t.endsWith("?") || (QUESTION_START.test(t) && !/\d/.test(t.split(/\s+/)[0] ?? ""));
 }
+
+const SMS_AMOUNT = /(?:rs\.?|inr|₹)\s*\d|(?:debited|credited)\s+(?:by|for|with)?\s*\d/i;
+const SMS_VERB = /\b(?:debited|credited|sent|spent|received|withdrawn|paid|deducted|purchase)\b/i;
+const SMS_BANK = /\b(?:a\/c|acct|account|card|upi|vpa|ref\s*no|refno|neft|imps|bank)\b|\b[x*]+\d{3,4}\b/i;
+
+/**
+ * A bank's SMS ("Sent Rs.450 from HDFC Bank A/C *1234 to …"), pasted in. The server reads these
+ * by rules, without AI (backend bank_sms.py); this only decides it isn't a question for Ask and
+ * that "Paste a bank SMS" found one.
+ */
+export function looksLikeBankSms(text: string): boolean {
+  const t = text.replace(/\s+/g, " ").trim();
+  return t.length >= 30 && SMS_AMOUNT.test(t) && SMS_VERB.test(t) && SMS_BANK.test(t);
+}

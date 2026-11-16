@@ -81,7 +81,7 @@ export function ToLog({
         })}
       </View>
       {txns.length > shown.length || all ? (
-        <Pressable onPress={() => setAll(!all)} hitSlop={6} className="mt-1 self-start py-1">
+        <Pressable onPress={() => setAll(!all)} hitSlop={12} className="mt-1 self-start py-1">
           <Txt weight="medium" tone="accent" className="text-sm">
             {all ? "Show fewer" : `See all ${txns.length}`}
           </Txt>

@@ -6,9 +6,9 @@
 // untick; importing it replaces this month's plan (undoing the import leaves the plan).
 // Opened from onboarding and from Settings.
 import * as Clipboard from "expo-clipboard";
-import { router, useLocalSearchParams } from "expo-router";
+import { router, useLocalSearchParams, useNavigation } from "expo-router";
 import { Check, ClipboardPaste, Copy, ExternalLink, Target, Undo2 } from "lucide-react-native";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Linking, Pressable, ScrollView, SectionList, TextInput, View } from "react-native";
 import Animated, { FadeInDown } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -18,10 +18,12 @@ import { CategoryBadge } from "@/components/category-icon";
 import { Button, Icon, SectionLabel, Txt } from "@/components/ui";
 import { dayHeading } from "@/lib/dates";
 import { formatPaise } from "@/lib/money";
-import { fetchImportPrompt, useImportBatches, useImportCommit, useImportPreview, useMeta, useUndoImport } from "@/lib/queries";
+import { useAuth } from "@/lib/auth";
+import { importDraft, useImportDraft } from "@/lib/import-draft";
+import { fetchImportPrompt, useImportBatches, useImportCommit, useMeta, useUndoImport } from "@/lib/queries";
 import { importGate } from "@/lib/import-gate";
 import { fonts, useTheme } from "@/lib/theme";
-import type { ImportedPlan, ImportEntry, ImportPreview, ImportResult, ImportSource } from "@/lib/types";
+import type { ImportedPlan, ImportEntry, ImportResult, ImportSource } from "@/lib/types";
 import { confirmDelete as askDelete } from "@/lib/ask-sheet";
 
 const SOURCES: { value: ImportSource; label: string; url: string | null }[] = [
@@ -172,7 +174,18 @@ export default function ImportScreen() {
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
   const meta = useMeta();
-  const read = useImportPreview();
+  const navigation = useNavigation();
+  const { user } = useAuth();
+  // The pasted reply and its preview live in lib/import-draft, so leaving this screen keeps them
+  // (and a long read can finish, and notify you, while you're elsewhere).
+  const draft = useImportDraft();
+  const { source, text, preview, include, takePlan } = draft;
+  const userId = user?.id ?? null;
+  useEffect(() => {
+    importDraft.enter(userId);
+    importDraft.watch(() => navigation.isFocused());
+    return () => importDraft.watch(null);
+  }, [userId, navigation]);
   const save = useImportCommit();
   const undo = useUndoImport();
   const batches = useImportBatches();
@@ -180,15 +193,12 @@ export default function ImportScreen() {
   function confirmUndo(id: number, what: string) {
     askDelete("Undo this import?", `${what}. Everything it added is removed.`, () => undo.mutate(id), "Undo import");
   }
-  const [source, setSource] = useState<ImportSource>("claude");
   const [copied, setCopied] = useState(false);
-  const [text, setText] = useState("");
-  const [preview, setPreview] = useState<ImportPreview | null>(null);
-  const [include, setInclude] = useState<Record<number, boolean>>({});
-  const [takePlan, setTakePlan] = useState(true);
   const [result, setResult] = useState<ImportResult | null>(null);
   const [undone, setUndone] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [localError, setError] = useState<string | null>(null);
+  const error = localError ?? draft.readError;
+  const setText = (value: string) => importDraft.set({ text: value });
 
   const accounts = useMemo(() => new Map((meta.data?.accounts ?? []).map((a) => [a.id, a.name])), [meta.data]);
   const categories = useMemo(() => new Map((meta.data?.categories ?? []).map((c) => [c.id, c.name])), [meta.data]);
@@ -220,16 +230,9 @@ export default function ImportScreen() {
     if (pasted.trim()) setText(pasted);
   }
 
-  async function readReply() {
+  function readReply() {
     setError(null);
-    try {
-      const data = await read.mutateAsync({ text, source });
-      setPreview(data);
-      setInclude(Object.fromEntries(data.entries.map((e) => [e.index, e.include])));
-      setTakePlan(!!data.plan);
-    } catch (e) {
-      setError((e as Error).message);
-    }
+    void importDraft.read();
   }
 
   const chosen = preview ? preview.entries.filter((e) => e.kind !== "skip" && include[e.index]) : [];
@@ -240,6 +243,7 @@ export default function ImportScreen() {
     setError(null);
     try {
       setResult(await save.mutateAsync({ entries: chosen, plan, source, rawText: text }));
+      importDraft.reset(); // it's in; the next import starts empty
     } catch (e) {
       setError((e as Error).message);
     }
@@ -350,7 +354,7 @@ export default function ImportScreen() {
                 </Txt>
               ) : null}
               {preview.plan ? (
-                <PlanFromChat plan={preview.plan} on={takePlan} onToggle={() => setTakePlan((v) => !v)} />
+                <PlanFromChat plan={preview.plan} on={takePlan} onToggle={() => importDraft.set({ takePlan: !takePlan })} />
               ) : null}
               {preview.plan_note ? (
                 <Txt tone="muted" className="mt-3 text-sm leading-5">
@@ -386,7 +390,7 @@ export default function ImportScreen() {
             const on = !!include[e.index];
             return (
               <Pressable
-                onPress={() => setInclude((m) => ({ ...m, [e.index]: !on }))}
+                onPress={() => importDraft.set({ include: { ...include, [e.index]: !on } })}
                 accessibilityRole="checkbox"
                 accessibilityState={{ checked: on }}
                 className="flex-row items-center gap-3 rounded-2xl px-1 py-2.5 active:bg-surface"
@@ -446,7 +450,7 @@ export default function ImportScreen() {
             loading={save.isPending}
             disabled={chosen.length === 0 && !plan}
           />
-          <Button label="Paste a different reply" variant="ghost" onPress={() => setPreview(null)} className="mt-1" />
+          <Button label="Paste a different reply" variant="ghost" onPress={() => importDraft.set({ preview: null })} className="mt-1" />
         </View>
       </View>
     );
@@ -482,7 +486,7 @@ export default function ImportScreen() {
               {SOURCES.map((s) => (
                 <Pressable
                   key={s.value}
-                  onPress={() => setSource(s.value)}
+                  onPress={() => importDraft.set({ source: s.value })}
                   accessibilityRole="radio"
                   accessibilityState={{ selected: s.value === source }}
                   className={`rounded-full px-4 py-2 ${s.value === source ? "bg-brand" : "bg-surface"}`}
@@ -557,18 +561,18 @@ export default function ImportScreen() {
           </Txt>
         ) : null}
         <View className="mt-6">
-          {read.isPending ? (
+          {draft.reading ? (
             <View className="mb-3 flex-row items-center gap-3">
               <ActivityIndicator color={colors.muted} />
               <Txt tone="muted" className="text-sm">
-                Reading the reply. A long chat can take a minute.
+                Reading the reply. A long chat can take a minute. You can do something else; Finlyt will notify you when it&apos;s ready.
               </Txt>
             </View>
           ) : null}
           <Button
             label="Read the reply"
-            onPress={() => void readReply()}
-            loading={read.isPending}
+            onPress={readReply}
+            loading={draft.reading}
             disabled={text.trim().length < 2}
           />
           {/* Earlier imports, each one undoable. */}

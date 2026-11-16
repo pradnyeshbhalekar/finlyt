@@ -27,6 +27,20 @@ ME = ("sub-me", "me@example.com")
 FRIEND = ("sub-friend", "friend@example.com")
 
 
+# Most tests were written against these two banks and cash (paying "from Kotak", "half DNS").
+# A real new user starts with just Bank and Cash; test_accounts.py checks that.
+TEST_ACCOUNTS = [
+    ("Kotak", "bank", "kotak", True),
+    ("DNS Bank", "bank", "dns", False),
+    ("Cash", "cash", None, False),
+]
+
+
+@pytest.fixture(autouse=True)
+def test_accounts(monkeypatch):
+    monkeypatch.setattr("finlyt_api.defaults.DEFAULT_ACCOUNTS", TEST_ACCOUNTS)
+
+
 def fake_google(token: str, audience: str) -> GoogleIdentity:
     assert audience == CLIENT_ID
     if not token.startswith("google:"):

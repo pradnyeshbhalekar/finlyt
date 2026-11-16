@@ -19,6 +19,7 @@ import { useTabBarHeight } from "@/components/tab-bar";
 import { TourTarget } from "@/components/tour";
 import { IconButton, Txt } from "@/components/ui";
 import { fetchAskThread, useAsk, useMeta } from "@/lib/queries";
+import { SLOW_NOTE, useReplyAlert, useSlow } from "@/lib/reply-alert";
 import { useDictation } from "@/lib/speech";
 import { BRAND, fonts, useTheme, WHITE } from "@/lib/theme";
 import type { MemoryUpdate, MonthReport } from "@/lib/types";
@@ -54,6 +55,9 @@ export default function Ask() {
   const { colors } = useTheme();
   const meta = useMeta();
   const ask = useAsk();
+  const slow = useSlow(ask.isPending);
+  // If the answer takes a while and you've gone to another tab or app, a notification says it's here.
+  const alertAway = useReplyAlert("/ask");
   const [messages, setMessages] = useState<Message[]>([]);
   const [threadId, setThreadId] = useState<number | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -100,8 +104,10 @@ export default function Ask() {
           memory_updates: turn.memory_updates ?? [],
         },
       ]);
+      alertAway("Finlyt answered", turn.reply);
     } catch (e) {
       setError((e as Error).message);
+      alertAway("Finlyt couldn't answer", (e as Error).message);
     }
   }
 
@@ -291,9 +297,16 @@ export default function Ask() {
         {ask.isPending ? (
           <View className="mb-4 flex-row items-center gap-2.5">
             <Coin size={24} variant="bare" mood="thinking" />
-            <Txt tone="muted" className="text-sm">
-              Looking into it…
-            </Txt>
+            <View className="flex-1">
+              <Txt tone="muted" className="text-sm">
+                Looking into it…
+              </Txt>
+              {slow ? (
+                <Txt tone="faint" className="mt-0.5 text-sm">
+                  {SLOW_NOTE}
+                </Txt>
+              ) : null}
+            </View>
           </View>
         ) : null}
         {error ? (

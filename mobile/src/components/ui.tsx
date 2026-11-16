@@ -9,15 +9,19 @@ import {
   Switch,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
   type StyleProp,
   type TextInputProps,
   type TextProps,
   type TextStyle,
 } from "react-native";
+import Animated, { useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { BRAND, fonts, useTheme, WHITE } from "@/lib/theme";
+
+import { ImeInsetView } from "../../modules/ime-inset";
 
 type Weight = keyof typeof fonts;
 type Tone = "fg" | "muted" | "faint" | "accent" | "danger" | "onBrand" | "warn" | "inverse";
@@ -336,7 +340,14 @@ export function Chip({
   );
 }
 
-/** A bottom sheet over a dimmed backdrop. Tapping the backdrop closes it. */
+/**
+ * A bottom sheet over a dimmed backdrop. Tapping the backdrop closes it.
+ *
+ * It's a Modal, which Android draws as its own edge-to-edge window that doesn't shrink for the
+ * keyboard, so a text box in the sheet used to end up under it (the goal form, Add money). An
+ * invisible ImeInsetView reads the keyboard's height from the sheet's own window and the sheet
+ * lifts its content above it, in step with the keyboard.
+ */
 export function Sheet({
   visible,
   onClose,
@@ -347,12 +358,31 @@ export function Sheet({
   children: ReactNode;
 }) {
   const insets = useSafeAreaInsets();
+  const { height } = useWindowDimensions();
+  const keyboard = useSharedValue(0);
+  const lift = useAnimatedStyle(() => ({ paddingBottom: Math.max(keyboard.get(), insets.bottom) + 16 }));
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      onRequestClose={onClose}
+      statusBarTranslucent
+      navigationBarTranslucent
+    >
       <Pressable className="flex-1 bg-black/50" onPress={onClose} accessibilityLabel="Close" />
-      <View className="rounded-t-3xl bg-bg px-5 pt-5" style={{ paddingBottom: insets.bottom + 16 }}>
+      <Animated.View className="rounded-t-3xl bg-bg px-5 pt-5" style={[{ maxHeight: height - insets.top - 8 }, lift]}>
+        {ImeInsetView ? (
+          <ImeInsetView
+            pointerEvents="none"
+            style={{ position: "absolute", left: 0, top: 0, width: 1, height: 1, opacity: 0 }}
+            onInsets={({ nativeEvent }) => {
+              keyboard.set(withTiming(nativeEvent.keyboard, { duration: nativeEvent.duration || 180 }));
+            }}
+          />
+        ) : null}
         {children}
-      </View>
+      </Animated.View>
     </Modal>
   );
 }

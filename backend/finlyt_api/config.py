@@ -27,6 +27,8 @@ class Settings:
     gemini_model: str | None = None
     groq_api_key: str | None = None
     groq_model: str | None = None
+    # Reads receipt photos when Gemini can't (GROQ_VISION_MODEL; see gemini.DEFAULT_GROQ_VISION_MODEL).
+    groq_vision_model: str | None = None
     # Ask Finlyt chats not touched for this many days are deleted.
     ask_keep_days: int = 10
     serverless: bool = False
@@ -48,6 +50,7 @@ class Settings:
             gemini_model=env("GEMINI_MODEL") or None,
             groq_api_key=env("GROQ_API_KEY") or None,
             groq_model=env("GROQ_MODEL") or None,
+            groq_vision_model=env("GROQ_VISION_MODEL") or None,
             ask_keep_days=int(env("ASK_KEEP_DAYS") or 10),
             brevo_api_key=env("BREVO_API_KEY") or None,
             mail_from=env("MAIL_FROM") or None,

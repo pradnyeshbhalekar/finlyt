@@ -322,6 +322,22 @@ class CommitmentPatch(_In):
     active: bool | None = None
 
 
+# ── Accounts ─────────────────────────────────────────────────────────────────
+
+
+class AccountIn(_In):
+    name: str = Field(min_length=1, max_length=40)
+    kind: Literal["bank", "cash"] = "bank"
+    is_primary: bool = False
+
+
+class AccountPatch(_In):
+    """Only the fields sent change. `is_primary: true` makes it the usual account."""
+
+    name: str | None = Field(default=None, min_length=1, max_length=40)
+    is_primary: bool | None = None
+
+
 # ── Savings goals ────────────────────────────────────────────────────────────
 
 

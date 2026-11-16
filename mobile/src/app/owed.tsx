@@ -1,18 +1,29 @@
-// Owed: who owes you, and whom you owe, with what each amount was for. To settle up, just say it
-// on Home ("Rahul gave 200 back").
+// Owed: who owes you, and whom you owe, with what each amount was for. Tap a person to settle up:
+// it opens Home with the words already in the box ("Rahul gave 200 back"), ready to send or change.
+import { router } from "expo-router";
+import { ChevronRight } from "lucide-react-native";
 import { ActivityIndicator, ScrollView, View } from "react-native";
 import Animated, { FadeInDown } from "react-native-reanimated";
 
 import { Coin } from "@/components/brand";
-import { Row, SectionLabel, Txt } from "@/components/ui";
+import { Icon, Row, SectionLabel, Txt } from "@/components/ui";
+import { logDraft } from "@/lib/log-draft";
 import { formatPaise } from "@/lib/money";
 import { useBalances } from "@/lib/queries";
 import { useTheme } from "@/lib/theme";
 import type { Balances } from "@/lib/types";
 
+/** Puts the settling-up words in Home's box and goes there with the keyboard up. */
+function settle(name: string, paise: number, theyPayMe: boolean) {
+  const rupees = paise % 100 === 0 ? String(paise / 100) : (paise / 100).toFixed(2);
+  logDraft.setText(theyPayMe ? `${name} gave ${rupees} back` : `paid ${name} ${rupees} back`);
+  router.dismissTo({ pathname: "/", params: { compose: "type" } });
+}
+
 function Person({ row, tone }: { row: Balances["owed_to_me"][number]; tone: "accent" | "fg" }) {
   return (
     <Row
+      onPress={() => settle(row.name, row.amount_paise, tone === "accent")}
       leading={
         <View className="h-10 w-10 items-center justify-center rounded-full bg-surface">
           <Txt weight="semibold" tone="muted">
@@ -23,9 +34,12 @@ function Person({ row, tone }: { row: Balances["owed_to_me"][number]; tone: "acc
       title={row.name}
       subtitle={row.items.map((i) => i.description).join(", ")}
       trailing={
-        <Txt weight="semibold" tone={tone}>
-          {formatPaise(row.amount_paise)}
-        </Txt>
+        <View className="flex-row items-center gap-1.5">
+          <Txt weight="semibold" tone={tone}>
+            {formatPaise(row.amount_paise)}
+          </Txt>
+          <Icon icon={ChevronRight} size={16} tone="faint" />
+        </View>
       }
     />
   );
@@ -110,7 +124,8 @@ export default function Owed() {
       ) : null}
 
       <Txt tone="muted" className="mt-8 text-sm leading-5">
-        To settle up, just say it on Home, like “Rahul gave 200 back” or “paid Aaditya his 200”.
+        Paid back? Tap the person. Finlyt writes it in the box on Home for you; change the amount if it was only
+        part, then send.
       </Txt>
     </ScrollView>
   );

@@ -1,8 +1,8 @@
 // One entry, as a sheet that opens at half height (drag up for all of it, down to close): what it
-// was, how much was yours, how it was paid, who owes you, and the words it came from. Opened by
-// tapping an entry on Home or in History.
+// was, how much was yours, how it was paid, who owes you, and the words it came from. The pencil
+// opens the editor (expense/edit); the bin deletes. Opened by tapping an entry on Home or in History.
 import { router, useLocalSearchParams } from "expo-router";
-import { Check, MessageSquareQuote, Trash2 } from "lucide-react-native";
+import { Check, MessageSquareQuote, Pencil, Trash2 } from "lucide-react-native";
 import { useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, View } from "react-native";
 import Animated, { FadeInDown } from "react-native-reanimated";
@@ -94,6 +94,12 @@ export default function ExpenseDetail() {
               {entry.description}
             </Txt>
           </View>
+          <IconButton
+            icon={Pencil}
+            label="Edit entry"
+            onPress={() => router.push({ pathname: "/expense/edit", params: { id: String(entry.id) } })}
+            tone="muted"
+          />
           <IconButton icon={Trash2} label="Delete entry" onPress={confirmDelete} tone="danger" disabled={remove.isPending} />
         </Animated.View>
 
@@ -118,7 +124,7 @@ export default function ExpenseDetail() {
                 />
               </View>
             ) : (
-              <Pressable onPress={() => setChangingDay(true)} hitSlop={6} className="mt-2 self-start">
+              <Pressable onPress={() => setChangingDay(true)} hitSlop={14} className="mt-2 self-start">
                 <Txt weight="medium" tone="accent" className="text-sm">
                   {update.isPending ? "Moving…" : "Change date"}
                 </Txt>

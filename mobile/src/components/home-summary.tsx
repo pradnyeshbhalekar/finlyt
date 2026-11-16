@@ -24,7 +24,7 @@ export function TodayHero({ spentPaise, plan }: { spentPaise: number; plan: Plan
   return (
     <Pressable onPress={() => router.push("/plan")} disabled={!limit} accessibilityRole="button" className="mt-6">
       <Txt tone="muted" className="text-sm">
-        Today
+        Spent today
       </Txt>
       <Txt weight="bold" className="mt-1 text-5xl" style={{ letterSpacing: -1.2 }}>
         {formatPaise(spentPaise)}
@@ -82,7 +82,7 @@ export function SummaryTiles({
   const month = new Date().toLocaleDateString("en-IN", { month: "long" });
   return (
     <View className="mt-6 flex-row gap-3">
-      <Tile label={month} onPress={() => router.push("/report")}>
+      <Tile label={`Spent in ${month}`} onPress={() => router.push("/report")}>
         <Txt weight="semibold" className="mt-1 text-lg">
           {formatPaise(monthPaise)}
         </Txt>
@@ -90,12 +90,12 @@ export function SummaryTiles({
           {budgetPaise ? (over > 0 ? `${formatPaise(over)} over budget` : `of ${formatPaise(budgetPaise)}`) : "See where it went"}
         </Txt>
       </Tile>
-      <Tile label="Owed" onPress={() => router.push("/owed")}>
+      <Tile label="Friends owe you" onPress={() => router.push("/owed")}>
         <Txt weight="semibold" className="mt-1 text-lg">
           {formatPaise(owedToMePaise)}
         </Txt>
         <Txt tone="muted" className="text-xs" numberOfLines={1}>
-          {iOwePaise > 0 ? `to you · you owe ${formatPaise(iOwePaise)}` : "to you"}
+          {iOwePaise > 0 ? `You owe ${formatPaise(iOwePaise)}` : owedToMePaise > 0 ? "See who" : "Nobody right now"}
         </Txt>
       </Tile>
     </View>
@@ -119,7 +119,7 @@ export function CheckInNudge({ plan }: { plan: PlanStatus | undefined }) {
           {title}
         </Txt>
         <Txt tone="muted" className="text-xs">
-          {plan.plan ? "Tell Finlyt what's coming up this week" : "Set a budget and get limits that fit you"}
+          {plan.plan ? "Tell Finlyt what's coming up this week" : "Set a budget and get a daily spending limit"}
         </Txt>
       </View>
       <Icon icon={ChevronRight} size={16} tone="muted" />

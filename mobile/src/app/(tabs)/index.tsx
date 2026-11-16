@@ -1,13 +1,17 @@
-// Home: today's check-in. Type (or say) what you spent at the bottom, or tap + for a form; Gemini
-// turns words into entries that are saved straight away or shown for a quick check, per Settings.
+// Home: today's check-in. Type (or say) what you spent at the bottom, or tap + to fill in a form,
+// scan a receipt or paste a bank SMS; Gemini (or rules, for simple notes and bank SMS) turns
+// words into entries that are saved straight away or shown for a quick check, per Settings.
 // Examples above the box can be tapped to try them. Before anything has ever been logged, a card
 // explains the three ways to log. People who already use Finlyt see the tour once after an
 // update that changes it (prefs.tourVersion).
+import * as Clipboard from "expo-clipboard";
 import { router, useLocalSearchParams } from "expo-router";
-import { ChevronRight, CircleAlert, Undo2 } from "lucide-react-native";
-import { useEffect, useRef } from "react";
+import { ChevronRight, CircleAlert, RefreshCw, Undo2 } from "lucide-react-native";
+import { useEffect, useRef, useState } from "react";
 import { AppState, Pressable, RefreshControl, ScrollView, View } from "react-native";
+import Animated, { FadeIn, FadeInDown, FadeOut } from "react-native-reanimated";
 
+import { AddSheet } from "@/components/add-sheet";
 import { AvatarButton } from "@/components/avatar";
 import { Coin, HeaderLogo, type Mood } from "@/components/brand";
 import { Composer } from "@/components/composer";
@@ -16,15 +20,18 @@ import { FirstSteps } from "@/components/first-steps";
 import { KeyboardAware } from "@/components/keyboard";
 import { CheckInNudge, SummaryTiles, TodayHero } from "@/components/home-summary";
 import { ProposalCard } from "@/components/proposal-card";
+import { ReadingCard } from "@/components/reading-card";
 import { useTabBarHeight } from "@/components/tab-bar";
 import { ToLog } from "@/components/to-log";
 import { TourTarget } from "@/components/tour";
 import { Icon, Screen, SectionLabel, Txt } from "@/components/ui";
+import { useAppUpdate } from "@/lib/app-updates";
 import { isoDate, moveToDay, startOfMonth } from "@/lib/dates";
 import {
   entryCount,
   hasIssues,
   isUndoable,
+  looksLikeBankSms,
   looksLikeQuestion,
   proposalToCommit,
   savedMessage,
@@ -32,6 +39,8 @@ import {
 import { logDraft, useLogDraft } from "@/lib/log-draft";
 import { formatPaise } from "@/lib/money";
 import { useAuth } from "@/lib/auth";
+import { receiptDraft } from "@/lib/receipt-draft";
+import { useReplyAlert, useSlow } from "@/lib/reply-alert";
 import { usePrefs } from "@/lib/prefs";
 import {
   useBalances,
@@ -78,6 +87,12 @@ export default function Home() {
   const remove = useDeleteExpense();
   const balances = useBalances();
   const refreshMoney = useRefreshMoney();
+  // If reading a note takes a while and you've gone elsewhere, a notification brings you back.
+  const alertAway = useReplyAlert("/");
+  // The + in the box: a form, a receipt or a bank SMS.
+  const [adding, setAdding] = useState(false);
+  // A new version downloaded over the air: offer a restart instead of waiting for the next launch.
+  const update = useAppUpdate();
 
   // Keep home-screen widgets in step with what Home shows.
   useEffect(() => {
@@ -130,8 +145,9 @@ export default function Home() {
     const { text: typed, note } = logDraft.get();
     const input = typed.trim();
     if (!input && !note) return;
-    // A question about your money ("where did it all go?") goes to Ask, not the log.
-    if (!note && looksLikeQuestion(input)) {
+    // A question about your money ("where did it all go?") goes to Ask, not the log. A pasted
+    // bank SMS can end in "Not you?", so it never counts as one.
+    if (!note && looksLikeQuestion(input) && !looksLikeBankSms(input)) {
       draft.setText("");
       router.push({ pathname: "/ask", params: { q: input } });
       return;
@@ -144,21 +160,56 @@ export default function Home() {
         audioUri: note?.uri ?? null,
         txnIds: picked ? [picked.id] : undefined,
       });
-      if (entryCount(proposal) === 0) {
-        draft.notice(
-          proposal.questions[0] ?? "I couldn't find any spending in that. Add an amount, like “chai 40”.",
-        );
+      const count = entryCount(proposal);
+      if (count === 0) {
+        const question =
+          proposal.questions[0] ?? "I couldn't find any spending in that. Add an amount, like “chai 40”.";
+        // A bank SMS with nothing to log (money in, an ATM, an OTP) has nothing to fix either.
+        if (proposal.model === "sms") draft.setText("");
+        draft.notice(question);
+        alertAway("Finlyt needs a bit more", question);
         return;
       }
       const words = proposal.transcript || input;
+      const entries = count === 1 ? "1 entry" : `${count} entries`;
       if (prefs.reviewBeforeSave || hasIssues(proposal)) {
         draft.hold({ proposal, input: words });
+        alertAway("Ready to check", `Finlyt read your note: ${entries}. Tap to check and save.`);
         return;
       }
       await save(proposal, words);
+      alertAway("Saved", `Finlyt saved ${entries} from your note.`);
     } catch (e) {
       draft.notice((e as Error).message);
+      alertAway("Finlyt couldn't read that", (e as Error).message);
     }
+  }
+
+  /** + → Paste a bank SMS: whatever was copied goes in the box and, if it's an SMS, is sent. */
+  async function pasteSms() {
+    let copied = "";
+    try {
+      copied = (await Clipboard.getStringAsync()).trim();
+    } catch {
+      // A blocked clipboard reads as empty.
+    }
+    if (!copied) {
+      logDraft.notice("Copy the bank SMS first: in Messages, press and hold it and tap Copy. Then tap + again.");
+      return;
+    }
+    logDraft.setText(copied.slice(0, 4000));
+    if (!looksLikeBankSms(copied)) {
+      logDraft.notice("That doesn't look like a bank SMS, so it's in the box to check first. Tap the arrow if it's right.");
+      return;
+    }
+    await send();
+  }
+
+  /** + → Scan a receipt: Google's scanner, then the receipt screen asks who owes you. */
+  async function scanReceipt() {
+    const result = await receiptDraft.scan();
+    if (result.error) logDraft.notice(result.error);
+    else if (result.started) router.push("/receipt");
   }
 
   async function savePending() {
@@ -193,11 +244,16 @@ export default function Home() {
   }
 
   const busy = propose.isPending;
+  const slow = useSlow(busy);
   // The logo's coin reacts: thinking while Gemini reads, happy for a few seconds after a save.
   const headerMood: Mood = busy || commit.isPending ? "thinking" : saved ? "happy" : restingMood;
   // The examples only help before anything's logged today.
   const showHint = !text && !pending && !saved && !notice && !busy && items.length === 0;
   const firstTime = latest.data !== undefined && latest.data.items.length === 0;
+  // Before the first entry Home stays calm: today's total, the three ways to log and the box.
+  // The month and owed tiles, the plan nudge and the history link come in once there's something
+  // to show (and aren't flashed while we're still finding out).
+  const calm = firstTime || latest.isLoading;
 
   /** Puts an example in the box and opens the keyboard, so it's one tap on the arrow to try it. */
   function tryExample(words: string) {
@@ -233,6 +289,24 @@ export default function Home() {
           </TourTarget>
         </View>
 
+        {update.pending ? (
+          <Animated.View entering={FadeInDown.duration(260)} className="mx-5 mt-2 flex-row items-center gap-3 rounded-2xl bg-accent-soft py-2 pl-4 pr-2">
+            <Icon icon={RefreshCw} size={16} tone="accent" />
+            <Txt weight="medium" className="flex-1 text-sm">
+              A new version of Finlyt is ready
+            </Txt>
+            <Pressable
+              onPress={update.restart}
+              accessibilityRole="button"
+              className="h-10 justify-center rounded-full px-3 active:opacity-60"
+            >
+              <Txt weight="semibold" tone="accent">
+                Restart
+              </Txt>
+            </Pressable>
+          </Animated.View>
+        ) : null}
+
         <ScrollView
           className="flex-1"
           contentContainerClassName="px-5 pb-6"
@@ -244,25 +318,25 @@ export default function Home() {
           <TourTarget id="today">
             <TodayHero spentPaise={day.data?.spend_paise ?? 0} plan={plan.data} />
           </TourTarget>
-          <TourTarget id="tiles">
-            <SummaryTiles
-              monthPaise={month.data?.spend_paise ?? 0}
-              budgetPaise={plan.data?.budget_paise ?? null}
-              owedToMePaise={owed}
-              iOwePaise={iOwe}
-            />
-          </TourTarget>
-          <CheckInNudge plan={plan.data} />
+          {calm ? null : (
+            <>
+              <TourTarget id="tiles">
+                <SummaryTiles
+                  monthPaise={month.data?.spend_paise ?? 0}
+                  budgetPaise={plan.data?.budget_paise ?? null}
+                  owedToMePaise={owed}
+                  iOwePaise={iOwe}
+                />
+              </TourTarget>
+              <CheckInNudge plan={plan.data} />
+            </>
+          )}
 
-          {busy ? (
-            <View className="mt-6 flex-row items-center gap-3 rounded-3xl bg-surface p-4">
-              <Coin size={36} mood="thinking" variant="bare" />
-              <Txt tone="muted">Reading that…</Txt>
-            </View>
-          ) : null}
+          {busy ? <ReadingCard slow={slow} /> : null}
 
+          {/* The answer slides in where "Reading that…" was. */}
           {pending && !busy ? (
-            <View className="mt-6">
+            <Animated.View entering={FadeInDown.springify().damping(18).stiffness(160)} exiting={FadeOut.duration(150)} className="mt-6">
               <ProposalCard
                 proposal={pending.proposal}
                 accounts={accounts}
@@ -283,7 +357,7 @@ export default function Home() {
                   })
                 }
               />
-            </View>
+            </Animated.View>
           ) : null}
 
           <ToLog
@@ -297,9 +371,11 @@ export default function Home() {
             }}
           />
 
-          <TourTarget id="logged" className="mt-8 flex-row items-center justify-between">
-            <SectionLabel>Logged today</SectionLabel>
-          </TourTarget>
+          {firstTime ? null : (
+            <TourTarget id="logged" className="mt-8 flex-row items-center justify-between">
+              <SectionLabel>Logged today</SectionLabel>
+            </TourTarget>
+          )}
           <View className="-mx-3 mt-2">
             {items.map((e) => (
               <ExpenseRow
@@ -314,7 +390,12 @@ export default function Home() {
           </View>
           {items.length === 0 && !todays.isLoading ? (
             firstTime ? (
-              <FirstSteps onForm={() => router.push("/expense/new")} />
+              <FirstSteps
+                onType={() => router.setParams({ compose: "type" })}
+                onSay={() => router.setParams({ compose: "voice" })}
+                onScan={() => void scanReceipt()}
+                onForm={() => router.push("/expense/new")}
+              />
             ) : (
               <View className="mt-6 items-center">
                 <Coin size={56} mood={restingMood} variant="bare" />
@@ -322,27 +403,33 @@ export default function Home() {
                   Nothing logged yet today.
                 </Txt>
                 <Txt tone="faint" className="mt-1 text-center text-sm">
-                  Type it in the box below, tap the mic, or tap + for a form.
+                  Type it in the box below or tap the mic. Tap + to scan a receipt, paste a bank SMS or fill in a form.
                 </Txt>
               </View>
             )
           ) : null}
 
-          <Pressable
-            onPress={() => router.push("/history")}
-            className="mt-4 flex-row items-center justify-between rounded-2xl py-3 active:opacity-60"
-          >
-            <Txt weight="medium" tone="muted">
-              All history
-            </Txt>
-            <Icon icon={ChevronRight} size={18} tone="muted" />
-          </Pressable>
+          {calm ? null : (
+            <Pressable
+              onPress={() => router.push("/history")}
+              className="mt-4 flex-row items-center justify-between rounded-2xl py-3 active:opacity-60"
+            >
+              <Txt weight="medium" tone="muted">
+                All history
+              </Txt>
+              <Icon icon={ChevronRight} size={18} tone="muted" />
+            </Pressable>
+          )}
         </ScrollView>
 
         <KeyboardAware rest={10} offset={tabBarHeight}>
           <View className="px-4 pt-2">
           {saved ? (
-            <View className="mb-2 flex-row items-center gap-3 rounded-2xl bg-fg py-2 pl-4 pr-2">
+            <Animated.View
+              entering={FadeInDown.springify().damping(18).stiffness(180)}
+              exiting={FadeOut.duration(160)}
+              className="mb-2 flex-row items-center gap-3 rounded-2xl bg-fg py-2 pl-4 pr-2"
+            >
               <Coin size={26} mood="happy" variant="bare" />
               <View className="flex-1">
                 <Txt weight="medium" tone="inverse">
@@ -366,23 +453,23 @@ export default function Home() {
                   </Txt>
                 </Pressable>
               ) : null}
-            </View>
+            </Animated.View>
           ) : null}
 
           {notice ? (
-            <View className="mb-2 flex-row items-start gap-2 rounded-2xl bg-surface px-4 py-3">
+            <Animated.View entering={FadeIn.duration(200)} className="mb-2 flex-row items-start gap-2 rounded-2xl bg-surface px-4 py-3">
               <Icon icon={CircleAlert} size={18} tone="muted" />
               <View className="flex-1">
                 <Txt tone="muted" className="text-sm">
                   {notice}
                 </Txt>
-                <Pressable onPress={() => router.push("/expense/new")} hitSlop={6} className="mt-1 self-start">
+                <Pressable onPress={() => router.push("/expense/new")} hitSlop={12} className="mt-1 self-start">
                   <Txt weight="medium" tone="accent" className="text-sm">
                     Add it by hand instead
                   </Txt>
                 </Pressable>
               </View>
-            </View>
+            </Animated.View>
           ) : null}
 
           {showHint ? (
@@ -403,7 +490,7 @@ export default function Home() {
                   onPress={() => tryExample(words)}
                   accessibilityRole="button"
                   accessibilityHint="Puts this in the box"
-                  className="rounded-full border border-line bg-bg px-3.5 py-2 active:bg-surface"
+                  className="min-h-11 justify-center rounded-full border border-line bg-bg px-4 active:bg-surface"
                 >
                   <Txt className="text-sm">{words}</Txt>
                 </Pressable>
@@ -414,8 +501,8 @@ export default function Home() {
           <TourTarget id="composer">
           <Composer
             busy={busy}
-            onAddByHand={() => router.push("/expense/new")}
-            placeholder={txn ? `What was ${txn.name}?` : "What did you spend on?"}
+            onAddByHand={() => setAdding(true)}
+            placeholder={txn ? `What was ${txn.name}?` : "Type what you spent, like “chai 40”"}
             hints={hints}
             onSend={() => void send()}
             onError={(message) => logDraft.notice(message)}
@@ -426,6 +513,13 @@ export default function Home() {
           </View>
         </KeyboardAware>
       </View>
+      <AddSheet
+        visible={adding}
+        onClose={() => setAdding(false)}
+        onForm={() => router.push("/expense/new")}
+        onScan={() => void scanReceipt()}
+        onPasteSms={() => void pasteSms()}
+      />
     </Screen>
   );
 }

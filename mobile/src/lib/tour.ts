@@ -1,4 +1,5 @@
-// The tour. It opens with an overview of everything Finlyt does on one screen, then walks
+// The tour. Right after onboarding it's short (five stops). The full one, from Settings or once
+// after an update, opens with an overview of everything Finlyt does on one screen, then walks
 // through the real app (Home, Ask, Plan, History, Settings), lighting up one part at a time with
 // a short note in plain words. Screens mark those parts with <TourTarget>, which reports where
 // they are; <TourHost> in the root layout draws the overview, the spotlight and the notes.
@@ -100,8 +101,30 @@ export function useTour(): State {
   return useSyncExternalStore(tour.subscribe, tour.get, tour.get);
 }
 
-/** The stops, in order. Words are kept short and plain, for someone who has never used it. */
-export function tourSteps(reviewBeforeSave: boolean): TourStep[] {
+/** The stops right after the welcome, which has already explained logging and let them try it. */
+const SHORT = ["composer", "today", "ask-box", "plan-main", "avatar"];
+
+/**
+ * The stops, in order. Words are kept short and plain, for someone who has never used it.
+ * `short` is the first-run tour after onboarding: five stops and the last card, no overview.
+ */
+export function tourSteps(reviewBeforeSave: boolean, short = false): TourStep[] {
+  const all = fullTour(reviewBeforeSave);
+  if (!short) return all;
+  return all
+    .filter((s) => s.kind === "end" || (s.target !== null && SHORT.includes(s.target)))
+    .map((s) =>
+      s.target === "composer"
+        ? {
+            ...s,
+            title: "This box is where you log",
+            text: "Type what you spent, like “chai 40”, and tap the blue arrow. Or tap the mic to say it, or + to scan a receipt, paste a bank SMS or fill in a form.",
+          }
+        : s,
+    );
+}
+
+function fullTour(reviewBeforeSave: boolean): TourStep[] {
   return [
     { kind: "overview", target: null, route: "/", icon: ListChecks, title: "Everything in one minute", text: "" },
     {
@@ -121,15 +144,15 @@ export function tourSteps(reviewBeforeSave: boolean): TourStep[] {
       route: "/",
       icon: Mic,
       title: "Or just say it",
-      text: "Tap the mic and talk. Your words appear in the box. Check them, then tap the blue arrow.",
+      text: "Tap the mic and talk. Finlyt listens on a full screen; when you stop, your words drop into the box and Finlyt reads them straight away.",
     },
     {
       kind: "spot",
       target: "add-by-hand",
       route: "/",
       icon: Plus,
-      title: "Or fill in a form",
-      text: "Tap + to type the amount, what it was for and how you paid, one box at a time.",
+      title: "More ways under +",
+      text: "Tap + to scan a receipt, paste an SMS from your bank, or fill in a form one box at a time.",
     },
     {
       kind: "spot",

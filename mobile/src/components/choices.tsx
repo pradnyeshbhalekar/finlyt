@@ -39,7 +39,7 @@ export function Choices({
         onPress={onOther}
         disabled={disabled}
         accessibilityRole="button"
-        hitSlop={6}
+        hitSlop={10}
         className="flex-row items-center gap-1.5 self-start px-1 py-1.5"
       >
         <Icon icon={Pencil} size={14} tone="muted" />

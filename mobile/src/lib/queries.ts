@@ -3,6 +3,7 @@ import { File } from "expo-file-system";
 
 import { api, queryString } from "./api";
 import type {
+  Account,
   ActivityPage,
   DuplicateGroup,
   Goal,
@@ -82,13 +83,51 @@ export function useRefreshMoney() {
     ]);
 }
 
-/** Change an entry (only the fields sent change), e.g. move it to the day it happened. */
+/** Change an entry (only the fields sent change): its day, what it was for, its category, or how
+ *  it was paid (new payments replace the old ones, and your share follows the new total). */
 export function useUpdateExpense() {
   const refresh = useRefreshMoney();
   return useMutation({
-    mutationFn: ({ id, ...patch }: { id: number; occurred_at?: string }) =>
+    mutationFn: ({
+      id,
+      ...patch
+    }: {
+      id: number;
+      occurred_at?: string;
+      description?: string;
+      category_id?: number | null;
+      payments?: { account_id: number; amount_paise: number }[];
+      dues?: { person_name: string; amount_paise: number }[];
+    }) =>
       api<Expense>(`/api/expenses/${id}`, { method: "PATCH", body: patch }),
     onSuccess: refresh,
+  });
+}
+
+// ── Accounts (the ways you pay) ──────────────────────────────────────────────
+
+export function useAddAccount() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { name: string; kind: Account["kind"] }) => api<Account>("/api/accounts", { method: "POST", body }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["meta"] }),
+  });
+}
+
+export function useChangeAccount() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...patch }: { id: number; name?: string; is_primary?: boolean }) =>
+      api<Account>(`/api/accounts/${id}`, { method: "PATCH", body: patch }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["meta"] }),
+  });
+}
+
+export function useDeleteAccount() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => api<void>(`/api/accounts/${id}`, { method: "DELETE" }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["meta"] }),
   });
 }
 

@@ -15,8 +15,8 @@ Finlyt is an Android app. It reminds me to log spending three times a day. I tel
 | Database | Neon Postgres in AWS Singapore. The API uses the pooled URL and migrations use the direct URL. A `dev` branch is used for local work |
 | Sign-in | Google sign-in on the phone with the native account picker. The backend verifies the Google ID token, then issues its own 90-day session token, kept in expo-secure-store. Only emails in `ALLOWED_EMAILS` can sign in |
 | Data | Every table is scoped per user, so the app can be shared later without a schema rewrite |
-| AI | Gemini Flash through `google-genai`, structured JSON output. Models are tried in order until one answers: `gemini-3.5-flash` → `gemini-3.8-flash` → `gemini-2.5-flash` (the free tier often returns 503 "high demand"). `GEMINI_MODEL` overrides the list (comma-separated). If every Gemini model fails, **Groq** (`openai/gpt-oss-120b`, free tier, `GROQ_API_KEY`) answers instead, with the same prompt, schema and checks; text only. Simple notes skip AI entirely (quick parser) |
-| Accounts | Kotak (primary, `X1234`), DNS Bank (Dombivli Nagari Sahakari Bank, `XX5678`) and Cash |
+| AI | Gemini Flash through `google-genai`, structured JSON output. Models are tried in order until one answers: `gemini-2.5-flash` → `gemini-3.5-flash` → `gemini-3.8-flash` → the Flash-Lite models (since 2026-11-16 the stable 2.5 leads; the 3.x previews were taking 26–40 s or refusing). Earlier models get 15 s (30 s for audio and photos), and one that fails cools down for 10 minutes. `GEMINI_MODEL` overrides the list (comma-separated). **Groq** (`GROQ_API_KEY`, free tier) takes over after 20 s (45 s for photos and imports): `openai/gpt-oss-120b` for text, Ask and the check-in, `qwen/qwen3.8-27b` (`GROQ_VISION_MODEL`) for receipt photos. Not voice notes: Groq's Whisper refuses the app's AAC. Simple notes and bank SMS skip AI entirely (rules) |
+| Accounts | A new user starts with Bank (the usual one) and Cash, and renames, adds or deletes them in Settings → Your accounts. The first user has Kotak, DNS Bank and Cash |
 | Splits | Store the total paid, my share and who owes me. Paybacks are logged by saying so ("Rahul gave 200 back") |
 | Input | Voice and text. Audio goes straight to Gemini, with no separate speech-to-text step |
 | Reminders | Local notifications at 12:00, 18:00 and 23:00 IST, editable in Settings |
@@ -47,7 +47,7 @@ When Rahul's ₹200 UPI credit arrives, the app asks "Rahul paying back for Lunc
 
 1. The app calls `GoogleSignin.signIn()` with the **Web** OAuth client ID and gets back a Google ID token.
 2. The app sends it to `POST /api/auth/google {id_token}`. The backend checks the token's signature, that its audience is `GOOGLE_WEB_CLIENT_ID`, and that the email is verified. It then checks the email against `ALLOWED_EMAILS`.
-3. On first sign-in, the backend creates the user along with default categories and the Kotak, DNS Bank and Cash accounts.
+3. On first sign-in, the backend creates the user along with default categories and two accounts, Bank and Cash.
 4. The backend returns a random session token and stores only its SHA-256 hash. The token lasts 90 days, and the expiry extends while the app is in use.
 5. Every API call sends `Authorization: Bearer <session token>`. Signing out deletes the session.
 
@@ -94,11 +94,13 @@ All routes are under `/api` and use JSON. Every route needs `Authorization: Bear
 | `POST /api/auth/google` | 1 | Exchange a Google ID token for a session |
 | `GET /api/auth/me` · `POST /api/auth/logout` | 1 | Get the current user · end the session |
 | `GET /api/meta` | 1 | Accounts, categories, people and the latest imported date |
+| `GET/POST /api/accounts` · `PATCH/DELETE /api/accounts/:id` | — | The ways you pay: list, add, rename, make one the usual account, delete (not one with entries, not the last) |
 | `GET /api/expenses` | 1 | List expenses. Filters: `from` and `to` (IST dates), `category_id`, `account_id`, `limit`, `offset` |
 | `POST /api/expenses` | 1 | Add an expense manually, with payments and dues |
 | `GET/PATCH/DELETE /api/expenses/:id` | 1 | Read, edit or delete an expense. Payments or dues sent with an edit replace the old ones. Deleting un-links any bank txns |
 | `GET /api/stats` | 1 | Totals for a date range: spend, by category, by day, money out per account, open dues |
-| `POST /api/log/propose` | 3 | Audio and/or text plus pending txn ids in, Gemini proposal and transcript out. Nothing is saved |
+| `POST /api/log/propose` | 3 | Audio and/or text plus pending txn ids in, Gemini proposal and transcript out. Nothing is saved. A pasted bank SMS is read by rules (`model: "sms"`), simple notes too (`"quick"`) |
+| `POST /api/log/receipt` | — | A scanned receipt (multipart, one `image` per page, up to 4, 4 MB together) in, a proposal of one expense paid in full by me out. Nothing is saved; the app asks who owes what and commits it |
 | `POST /api/log/commit` | 3 | Save a reviewed proposal in one database transaction |
 | `GET /api/import/prompt` | 4 | The Claude prompt, built from the current categories and accounts |
 | `POST /api/import/preview` | 4 | Pasted reply in, parsed entries and warnings out, plus `plan` (the chat's budget or plan for this month or week, checked like a check-in plan) or `plan_note` (why it can't come in). Gemini repairs bad JSON |
@@ -116,7 +118,7 @@ All routes are under `/api` and use JSON. Every route needs `Authorization: Bear
 Redesigned on 2026-11-05 to be minimal: Lucide icons, Inter, and no emojis anywhere (notifications included). A bottom bar (Home, Ask, Plan, History) was added on 2026-11-06.
 
 - **Sign in**: wordmark, one line of copy, "Continue with Google".
-- **Onboarding** (first run after sign-in): "When should I check in?", with the reminder times (default 12:00, 18:00, 23:00; tap to change, X to remove, add more) and the "Check before saving" switch.
+- **Onboarding** (first run after sign-in), five steps: how it works → try it once (a practice box, nothing saved, with the "Check before saving" switch) → reminder times (asks for notifications) → import from an AI chat (optional) → the weekly check-in day. Then the tour.
 - **Bottom bar** (since 2026-11-06): Home, Ask, Plan and History are tabs. Settings, Owed, entries, Review and the check-in chat open on top without it.
 - **Home** (where reminders land): wordmark and your photo, which opens Settings (your profile); the current check-in ("6 PM check-in"); today's spend (my share) and count; this month's total and a "₹X owed to you" link; today's entries; "All history". At the bottom: a "Try: …" hint and a chat-style composer. Type the way you talk (or record a voice note), then send.
   - **Check before saving on**: Gemini's entries appear in a card ("Look right?") with Save, Edit (opens the full editor) or discard (puts the words back in the composer).
@@ -129,8 +131,16 @@ Redesigned on 2026-11-05 to be minimal: Lucide icons, Inter, and no emojis anywh
 - **Check-in** (weekly, on the day and time you pick in onboarding, Plan or Settings): Finlyt asks what's coming up, with answers to tap or your own words. The plan has a usual-day limit and optional bigger days, and you can change the numbers on the card, which shows whether it fits the budget.
 - **Ask Finlyt**: a chat about your money. If a question is unclear, Finlyt asks back with answers to tap. "Where did my money go?" comes with a report card (full report screen behind it) and follow-ups to tap. It remembers income, commitments and notes you tell it (the **What Finlyt remembers** screen shows them) and uses them for "am I saving enough?". Past chats sit behind the header's history icon (grouped by day, searchable, long-press to delete, kept 10 days), next to New chat. Long-press a message to copy it.
 - **Settings**: profile; Appearance (Auto / Light / Dark / Ink); Check before saving; Add an entry by hand; Check-in times and a test reminder; How Finlyt works (the tour); Sign out.
-- **Tour** (`lib/tour.ts`, `components/tour.tsx`): an overview of everything on one screen, then a guided walk through the real app that lights up one part at a time (the box, the mic, +, today, tiles, entries, Ask, Plan, History, Settings) with a short note. After onboarding, once after an update that changes it (`TOUR_VERSION`), and from Settings → How Finlyt works.
-- **Logging, for someone new**: a + in the box opens Add by hand; tappable examples above the box fill it; before the first entry Home shows the three ways to log.
+- **Tour** (`lib/tour.ts`, `components/tour.tsx`): an overview of everything on one screen, then a guided walk through the real app that lights up one part at a time (the box, the mic, +, today, tiles, entries, Ask, Plan, History, Settings) with a short note. After onboarding, once after an update that changes it (`TOUR_VERSION`), and from Settings → How Finlyt works. Right after onboarding it's a short version: five stops, no overview.
+- **Logging, for someone new**: tappable examples above the box fill it; before the first entry Home shows the ways to log (type, say, scan a receipt, a form).
+- **+ in the box** (`components/add-sheet.tsx`, 2026-11-16): Scan a receipt, Paste a bank SMS, Fill in a form.
+- **Talking** (`components/voice-overlay.tsx`): the mic opens a full-screen listening view over everything: a gradient from the theme's ground to its soft accent with the brand glowing behind an orb that swells with your voice, and the words in 30 pt as they're heard. Stop (or a pause) and the words shrink and fly into the box while the view fades, then they're sent; "Reading that…" (a sheen sweeping across, `components/reading-card.tsx`) and the answer card slide in. Cancel (X or back) puts the box back as it was. Builds without speech-to-text record a voice note in the same view.
+- **Scan a receipt** (`app/receipt.tsx`, modal): Google's document scanner (`modules/doc-scanner`), then "Does this look right?" with the shop, total, day, category and account, and one question: does anyone owe you, and how is it split (Equal, I pay 25%, I pay 75%, They pay all, Custom). "Edit details" opens the full check screen. The scan is kept in `lib/receipt-draft.ts` while it's read, so leaving doesn't lose it and a notification says when it's ready.
+- **Month report ⓘ** (`components/info.tsx`, `lib/report-help.ts`): every number and section has an ⓘ that explains it in a sheet, with that month's own figures.
+- **Edit entry** (`expense/edit`): from the pencil on an entry's sheet. What for, category, and for a plain entry the amount and account, and who owes part of it (until someone has paid back).
+- **Your accounts** (`accounts`): rename Bank and Cash to your own, add more, pick the usual one.
+- The check-in chat and an import in progress are kept when you leave their screens (`lib/plan-chat.ts`, `lib/import-draft.ts`).
+- **Answer notifications** (`lib/reply-alert.ts`): when the AI answers and you're not on that screen (or not in the app), a notification says so and opens it. Logging, Ask, the check-in chat and Import. Waits over 6 s say you can carry on.
 - **Themes**: Auto is Light in light mode and Dark (black) in dark mode; Ink is a choice. The coin is always lively: normal, then a smile, over and over.
 
 **Themes** (from the logo canvas): Light (white, ink text), Dark (black) and Ink (navy `#0B1033`). Auto follows the phone's light/dark setting. They're built on semantic Tailwind colours backed by CSS variables (`bg-bg`, `bg-surface`, `text-fg`, `text-muted`, `text-accent`…) set on the root view with NativeWind `vars()` (`src/lib/theme.ts`). Preferences (theme, check before saving, onboarded) are stored on the device in SecureStore (`finlyt.prefs`).
@@ -174,6 +184,18 @@ Parsing notes:
 - Kotak gives only a date (`dd-mm-yy`), so the time comes from when the SMS was received. DNS gives the full date and time.
 - Kotak's counterparty can be a UPI ID or a name, and banks truncate both (for example `@hdfcban`).
 - Still needed later (optional): sample SMS for Kotak debit card, ATM and NEFT/IMPS.
+
+## Bank SMS paste and receipts (2026-11-16)
+
+**Bank SMS, pasted.** Reading SMS was removed on 2026-11-10; this is the opt-in, one-at-a-time version: copy the SMS in Messages and paste it into the box (or + → Paste a bank SMS, which reads the clipboard and sends it). `finlyt_api/bank_sms.py` reads it by rules, for any bank: the amount (not the balance or limit after it), the direction (whichever money verb comes first, with "credit card"/"debit card" treated as card names), the masked account or card digits, the bank, the other side (UPI ID, name or shop), the date and time and the reference. A message only counts as a bank's when it also has something only a bank writes (X1234, a ref number, "a/c", a bank's name), so "paid rs 200 to rahul by upi" still goes to Gemini. `services/sms_paste.py` turns it into a proposal:
+- money out → one expense, from the account whose last digits or bank match (else the usual account, flagged when there are several banks), described by the payee ("Zomato", "UPI to Rahul Sharma", "Dmart Avenue"), category from the payee's name, at the SMS's date and time; to someone I owe exactly that much → paying them back;
+- money in from someone who owes me (name or alias) → their payback; other money in, ATM withdrawals, OTPs, requests and failed payments → nothing, with a line saying why;
+- the same SMS already logged (it's kept as `note_raw`) → flagged before saving.
+Messages the rules can't read go to Gemini, whose prompt now covers pasted SMS. Nothing is stored until it's saved, so `bank_txns` isn't used.
+
+**Receipts.** `modules/doc-scanner` (Kotlin) opens ML Kit's document scanner (`play-services-mlkit-document-scanner`, run by Play services: edge detection, crop, retake, up to 3 pages, gallery import; no camera permission) and saves each page as a ≤2000 px JPEG (about 0.2–0.5 MB) in the cache. `POST /api/log/receipt` sends the pages to Gemini with `RECEIPT_PROMPT` (one expense for the final amount payable, the shop as the description, the printed date, cash if the receipt says so, the items as the transcript) and forces it to one expense paid in full by me; the phone asks who owes what. If Gemini can't, Groq's vision model reads the photos (and `gpt-oss-120b` reshapes an off-schema reading).
+
+**Sheets and the keyboard.** A `Sheet` is a React Native Modal, which Android draws as its own edge-to-edge window that doesn't shrink for the keyboard, and React Native's and Reanimated's keyboard tracking only watch the main window, so text boxes in sheets sat under the keyboard (goal form, Add money, rename account, feedback, plan limits). `modules/ime-inset` is an invisible native view that reads its own window's IME insets; `Sheet` lifts its content by that height, timed with the keyboard's animation.
 
 ## Gemini logging (phase 3)
 
@@ -310,6 +332,10 @@ Done on 2026-11-05: project `finlyt-api` (Hobby, team "pradnyeshbhalekar's proje
 3. Deploy with `npx vercel@65.11.0 deploy --prod --yes` from `backend/`. It isn't connected to GitHub, so pushes don't deploy.
 4. Logs: `npx vercel@65.11.0 logs requests --json`, or the dashboard.
 5. Migrations run from the Mac (`uv run alembic upgrade head`, using `DATABASE_URL_UNPOOLED`). There's only one Neon database, so local dev and production share data.
+
+### Expo (over-the-air updates)
+
+Done on 2026-11-16: EAS project `@pradnyeshhhs-team/pradnyesh` (id `ed2c1d0d-ce65-4733-a49a-5a12c34893d5`), so the app's `slug` is `pradnyesh`. Builds are still made locally; `expo-updates` in the APK fetches JavaScript updates from channel `production` for builds with the same app version (`runtimeVersion` policy `appVersion`). Publish with `cd mobile && npm run ota -- "what changed"` (`scripts/ota.sh`). A native change (module, permission, plugin) needs a version bump and an APK.
 
 ### Phone
 

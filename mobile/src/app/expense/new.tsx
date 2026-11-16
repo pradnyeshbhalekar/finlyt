@@ -1,6 +1,9 @@
+// Add an entry by hand. The form opens with only what every entry needs (amount, what for,
+// category, how you paid); paying two ways, a friend owing part of it and "yesterday" sit under
+// "More options". Save stays pinned above the keyboard.
 import { router } from "expo-router";
 import { useState } from "react";
-import { Plus, X } from "lucide-react-native";
+import { ChevronDown, ChevronUp, Plus, X } from "lucide-react-native";
 import { Pressable, ScrollView, View } from "react-native";
 
 import { categoryIcon } from "@/components/category-icon";
@@ -30,6 +33,7 @@ export default function AddExpense() {
   const [owes, setOwes] = useState<Owe[]>([]);
   const [yesterday, setYesterday] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [more, setMore] = useState(false);
 
   const firstAccountId = accountId ?? primary?.id ?? null;
 
@@ -99,7 +103,7 @@ export default function AddExpense() {
     <View className="flex-1 bg-bg">
     <ScrollView
       className="flex-1 bg-bg"
-      contentContainerClassName="px-5 pb-16 pt-2"
+      contentContainerClassName="px-5 pb-8 pt-2"
       keyboardShouldPersistTaps="handled"
     >
       <Field
@@ -141,6 +145,24 @@ export default function AddExpense() {
           />
         ))}
       </View>
+      <Pressable
+        onPress={() => setMore(!more)}
+        accessibilityRole="button"
+        accessibilityState={{ expanded: more }}
+        className="mt-3 min-h-11 flex-row items-center gap-1.5 self-start"
+      >
+        <Txt weight="medium" tone="accent">
+          {more ? "Fewer options" : "More options"}
+        </Txt>
+        <Icon icon={more ? ChevronUp : ChevronDown} size={16} tone="accent" />
+      </Pressable>
+      {more ? null : (
+        <Txt tone="muted" className="text-sm">
+          Paid two ways, a friend owes part of it, or it was yesterday.
+        </Txt>
+      )}
+      {more ? (
+        <>
       <Pressable onPress={() => setSplitPayment(!splitPayment)} className="self-start py-2">
         <Txt weight="medium" tone="accent">
           {splitPayment ? "Paid with one account" : "Paid part of it another way, like half cash"}
@@ -216,16 +238,20 @@ export default function AddExpense() {
         <Chip label="Yesterday" selected={yesterday} onPress={() => setYesterday(true)} />
       </View>
 
-      {error ? (
-        <Txt tone="danger" className="mb-2 mt-2 text-sm">
-          {error}
-        </Txt>
+        </>
       ) : null}
-      <View className="mt-4">
+    </ScrollView>
+    {/* Save stays in reach, above the keyboard. */}
+    <KeyboardAware>
+      <View className="px-5 pt-2">
+        {error ? (
+          <Txt tone="danger" className="mb-2 text-sm">
+            {error}
+          </Txt>
+        ) : null}
         <Button label="Save" onPress={() => void save()} loading={create.isPending} />
       </View>
-    </ScrollView>
-    <KeyboardAware rest={0} />
+    </KeyboardAware>
     </View>
   );
 }

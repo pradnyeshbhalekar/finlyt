@@ -1,16 +1,19 @@
 // "Where did my money go": a month report, the way Claude's personal finance answers it. A compact
 // card goes under Ask Finlyt's answer; the full report (its own screen) has every section: the
 // total and how it compares, each day, where it went against your usual, money in and what's left,
-// accounts, biggest spends, regular payments, money owed, and what's worth a look.
+// accounts, biggest spends, regular payments, money owed, and what's worth a look. Each number and
+// section has an ⓘ that explains it with this month's own figures (lib/report-help).
 import { router } from "expo-router";
 import { ArrowDownRight, ArrowUpRight, ChevronRight, Lightbulb, Repeat } from "lucide-react-native";
 import { useState } from "react";
 import { Pressable, View } from "react-native";
 
 import { formatPaise } from "@/lib/money";
+import { reportHelp, type HelpKey } from "@/lib/report-help";
 import type { MonthReport } from "@/lib/types";
 
 import { DailyBars, RankedBars, Ring } from "./charts";
+import { InfoButton, InfoSheet } from "./info";
 import { Icon, SectionLabel, Txt } from "./ui";
 
 function shortDay(iso: string): string {
@@ -106,12 +109,15 @@ export function ReportCard({ report: r }: { report: MonthReport }) {
   );
 }
 
-function Tile({ label, value, hint }: { label: string; value: string; hint?: string }) {
+function Tile({ label, value, hint, info }: { label: string; value: string; hint?: string; info?: () => void }) {
   return (
     <View className="flex-1 rounded-2xl bg-surface p-3">
-      <Txt tone="muted" className="text-xs">
-        {label}
-      </Txt>
+      <View className="flex-row items-center gap-1">
+        <Txt tone="muted" className="shrink text-xs" numberOfLines={1}>
+          {label}
+        </Txt>
+        {info ? <InfoButton label={label} onPress={info} /> : null}
+      </View>
       <Txt weight="semibold" className="mt-1 text-lg">
         {value}
       </Txt>
@@ -124,10 +130,13 @@ function Tile({ label, value, hint }: { label: string; value: string; hint?: str
   );
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Section({ title, info, children }: { title: string; info?: () => void; children: React.ReactNode }) {
   return (
     <View className="mt-9">
-      <SectionLabel className="mb-3">{title}</SectionLabel>
+      <View className="mb-3 flex-row items-center gap-1.5">
+        <SectionLabel>{title}</SectionLabel>
+        {info ? <InfoButton label={title} onPress={info} /> : null}
+      </View>
       {children}
     </View>
   );
@@ -136,6 +145,13 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 /** The full report. */
 export function ReportView({ report: r }: { report: MonthReport }) {
   const [allCategories, setAllCategories] = useState(false);
+  // Which ⓘ is open; `topic` stays set while its sheet fades out.
+  const [helpOpen, setHelpOpen] = useState(false);
+  const [topic, setTopic] = useState<HelpKey>("spent");
+  const explain = (key: HelpKey) => () => {
+    setTopic(key);
+    setHelpOpen(true);
+  };
   const income = r.money_in.income_source === "bank" ? r.money_in.income_paise : r.money_in.salary_paise;
   const left = r.money_in.left_paise;
   const saved = r.money_in.saved_share;
@@ -148,9 +164,12 @@ export function ReportView({ report: r }: { report: MonthReport }) {
       <View className="items-center">
         {budget ? (
           <Ring ratio={r.spent_paise / budget} over={over > 0}>
-            <Txt tone="muted" className="text-xs">
-              {r.current ? "Spent so far" : "Spent"}
-            </Txt>
+            <View className="flex-row items-center gap-1">
+              <Txt tone="muted" className="text-xs">
+                {r.current ? "Spent so far" : "Spent"}
+              </Txt>
+              <InfoButton label={r.current ? "Spent so far" : "Spent"} onPress={explain("spent")} />
+            </View>
             <Txt weight="bold" className="mt-0.5 text-3xl" style={{ letterSpacing: -0.6 }}>
               {formatPaise(r.spent_paise)}
             </Txt>
@@ -159,9 +178,12 @@ export function ReportView({ report: r }: { report: MonthReport }) {
             </Txt>
           </Ring>
         ) : (
-          <Txt weight="bold" className="text-5xl" style={{ letterSpacing: -1 }}>
-            {formatPaise(r.spent_paise)}
-          </Txt>
+          <View className="flex-row items-center gap-2">
+            <Txt weight="bold" className="text-5xl" style={{ letterSpacing: -1 }}>
+              {formatPaise(r.spent_paise)}
+            </Txt>
+            <InfoButton label={r.current ? "Spent so far" : "Spent"} onPress={explain("spent")} />
+          </View>
         )}
         <Txt tone="muted" className="mt-3 text-sm">
           {days}
@@ -169,9 +191,11 @@ export function ReportView({ report: r }: { report: MonthReport }) {
         <Comparison r={r} />
       </View>
       <View className="mt-6 flex-row gap-2">
-        <Tile label="A day" value={formatPaise(r.per_day_paise)} />
-        {r.current ? <Tile label="On pace for" value={formatPaise(r.pace_paise)} /> : null}
-        {r.usual.months ? <Tile label="Usually" value={formatPaise(r.usual.total_paise)} hint="a month" /> : null}
+        <Tile label="A day" value={formatPaise(r.per_day_paise)} info={explain("perDay")} />
+        {r.current ? <Tile label="On pace for" value={formatPaise(r.pace_paise)} info={explain("pace")} /> : null}
+        {r.usual.months ? (
+          <Tile label="Usually" value={formatPaise(r.usual.total_paise)} hint="a month" info={explain("usual")} />
+        ) : null}
       </View>
 
       <Section title="Money in and out">
@@ -180,15 +204,21 @@ export function ReportView({ report: r }: { report: MonthReport }) {
             label={r.money_in.income_source === "bank" ? "Income" : "Monthly income"}
             value={income ? formatPaise(income) : "Not known"}
             hint={r.money_in.income_source === "memory" ? "what you told Finlyt" : income ? undefined : "tell Finlyt in Ask"}
+            info={explain("income")}
           />
-          <Tile label={r.current ? "Spent, on pace" : "Spent"} value={formatPaise(r.current ? r.pace_paise : r.spent_paise)} />
+          <Tile
+            label={r.current ? "Spent, on pace" : "Spent"}
+            value={formatPaise(r.current ? r.pace_paise : r.spent_paise)}
+            info={explain("spentOnPace")}
+          />
           {left !== null && left < 0 ? (
-            <Tile label="Over" value={formatPaise(-left)} hint="more than your income" />
+            <Tile label="Over" value={formatPaise(-left)} hint="more than your income" info={explain("left")} />
           ) : (
             <Tile
               label="Left"
               value={left === null ? "–" : formatPaise(left)}
               hint={saved === null ? undefined : `${Math.round(saved * 100)}% of income`}
+              info={explain("left")}
             />
           )}
         </View>
@@ -209,12 +239,12 @@ export function ReportView({ report: r }: { report: MonthReport }) {
         ) : null}
       </Section>
 
-      <Section title="Each day">
+      <Section title="Each day" info={explain("eachDay")}>
         <DailyBars days={r.by_day} limitPaise={limit} />
       </Section>
 
       {r.categories.length > 0 ? (
-        <Section title="Where it went">
+        <Section title="Where it went" info={explain("whereItWent")}>
           <RankedBars rows={categoryRows(r, allCategories ? undefined : 6, () => setAllCategories(true))} />
           <Txt tone="faint" className="mt-3 text-xs">
             Tap a category to see what&apos;s in it.
@@ -223,13 +253,13 @@ export function ReportView({ report: r }: { report: MonthReport }) {
       ) : null}
 
       {r.paid_from.length > 0 ? (
-        <Section title="Paid from">
+        <Section title="Paid from" info={explain("paidFrom")}>
           <RankedBars showUsual={false} rows={r.paid_from.map((a) => ({ key: String(a.account_id), label: a.name, paise: a.paid_paise }))} />
         </Section>
       ) : null}
 
       {r.biggest.length > 0 ? (
-        <Section title="Biggest spends">
+        <Section title="Biggest spends" info={explain("biggest")}>
           {r.biggest.map((b) => (
             <Pressable
               key={b.expense_id}
@@ -251,7 +281,7 @@ export function ReportView({ report: r }: { report: MonthReport }) {
       ) : null}
 
       {r.regular.length > 0 ? (
-        <Section title="Regular payments">
+        <Section title="Regular payments" info={explain("regular")}>
           {r.regular.map((x) => (
             <View key={x.description} className="flex-row items-center gap-3 py-2">
               <Icon icon={Repeat} size={18} tone="muted" />
@@ -270,7 +300,7 @@ export function ReportView({ report: r }: { report: MonthReport }) {
       ) : null}
 
       {r.owed.to_me_paise || r.owed.i_owe_paise ? (
-        <Section title="Owed">
+        <Section title="Owed" info={explain("owed")}>
           <Pressable onPress={() => router.push("/owed")} className="flex-row gap-2 active:opacity-70">
             <Tile label="Owed to you" value={formatPaise(r.owed.to_me_paise)} />
             <Tile label="You owe" value={formatPaise(r.owed.i_owe_paise)} />
@@ -279,7 +309,7 @@ export function ReportView({ report: r }: { report: MonthReport }) {
       ) : null}
 
       {r.notes.length > 0 ? (
-        <Section title="Worth a look">
+        <Section title="Worth a look" info={explain("notes")}>
           {r.notes.map((n, i) => (
             <View key={i} className="mb-2.5 flex-row gap-2.5">
               <Icon icon={Lightbulb} size={16} tone="muted" />
@@ -288,6 +318,8 @@ export function ReportView({ report: r }: { report: MonthReport }) {
           ))}
         </Section>
       ) : null}
+
+      <InfoSheet visible={helpOpen} topic={reportHelp(r, topic)} onClose={() => setHelpOpen(false)} />
     </View>
   );
 }
