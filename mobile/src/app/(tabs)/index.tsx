@@ -41,6 +41,7 @@ import { formatPaise } from "@/lib/money";
 import { useAuth } from "@/lib/auth";
 import { receiptDraft } from "@/lib/receipt-draft";
 import { useReplyAlert, useSlow } from "@/lib/reply-alert";
+import { pickAlert } from "@/lib/habits";
 import { usePrefs } from "@/lib/prefs";
 import {
   useBalances,
@@ -104,12 +105,15 @@ export default function Home() {
   }, []);
 
 
-  // The "Saved" toast goes away on its own.
+  // A line about a small habit, if what was saved touched one (per Settings → Habit alerts).
+  const habitLine = saved ? pickAlert(saved.habits, prefs.habitAlerts) : null;
+
+  // The "Saved" toast goes away on its own, a little later when it has a habit to mention.
   useEffect(() => {
     if (!saved) return;
-    const timer = setTimeout(() => logDraft.clearSaved(), 8000);
+    const timer = setTimeout(() => logDraft.clearSaved(), habitLine ? 10000 : 8000);
     return () => clearTimeout(timer);
-  }, [saved]);
+  }, [saved, habitLine]);
 
   const accounts = new Map((meta.data?.accounts ?? []).map((a) => [a.id, a]));
   // Help the speech recognizer with names it wouldn't guess: accounts, people, common places.
@@ -137,6 +141,7 @@ export default function Home() {
       input: words,
       questions: proposal.questions,
       undoable: isUndoable(body),
+      habits: result.habits,
     });
   }
 
@@ -430,12 +435,16 @@ export default function Home() {
               exiting={FadeOut.duration(160)}
               className="mb-2 flex-row items-center gap-3 rounded-2xl bg-fg py-2 pl-4 pr-2"
             >
-              <Coin size={26} mood="happy" variant="bare" />
+              <Coin size={26} mood={habitLine ? "thinking" : "happy"} variant="bare" />
               <View className="flex-1">
                 <Txt weight="medium" tone="inverse">
                   {saved.message}
                 </Txt>
-                {saved.questions[0] ? (
+                {habitLine ? (
+                  <Txt tone="inverse" className="text-xs opacity-80" numberOfLines={2}>
+                    {habitLine}
+                  </Txt>
+                ) : saved.questions[0] ? (
                   <Txt tone="inverse" className="text-xs opacity-70" numberOfLines={2}>
                     {saved.questions[0]}
                   </Txt>

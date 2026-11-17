@@ -59,6 +59,9 @@ CATEGORY_WORDS: dict[str, tuple[str, ...]] = {
         "swiggy", "restaurant", "cafe", "canteen", "mess", "food", "khana", "thali", "panipuri",
         "golgappe", "chaat", "bhel", "frankie", "roll", "cake", "water", "colddrink", "pepsi",
         "coke", "tiffin", "dabba", "kfc", "mcdonalds", "dominos", "starbucks", "meal", "paratha",
+        "chocolate", "chocolates", "choco", "dairymilk", "kitkat", "candy", "toffee", "kulfi",
+        "soda", "sprite", "fanta", "limca", "thumsup", "maaza", "frooti", "redbull", "coldcoffee",
+        "chips", "lays", "kurkure", "biscuit", "biscuits", "namkeen", "puff", "pastry", "cookies",
     ),
     "Transport": (
         "auto", "rickshaw", "uber", "ola", "rapido", "cab", "taxi", "metro", "bus", "train",
@@ -95,8 +98,17 @@ CATEGORY_WORDS: dict[str, tuple[str, ...]] = {
     "Travel": ("flight", "hotel", "trip", "travel", "oyo", "airbnb", "makemytrip", "irctc"),
     "Gifts": ("gift", "gifts", "present", "donation", "shagun"),
     "Investments": ("sip", "stocks", "shares", "zerodha", "groww", "fd", "ppf", "nps"),
+    "Other": ("cigarette", "cigarettes", "ciggy", "sutta", "bidi", "paan", "gutkha"),
 }  # fmt: skip
 CATEGORY_OF = {word: category for category, words in CATEGORY_WORDS.items() for word in words}
+
+# Two words for one thing, read as one word ("ice cream 10" is one item, not "ice" and "cream").
+JOINED = {"ice cream": "icecream", "cold drink": "colddrink", "cold coffee": "coldcoffee", "thums up": "thumsup",
+          "dairy milk": "dairymilk", "kit kat": "kitkat", "red bull": "redbull", "vada pav": "vadapav",
+          "pani puri": "panipuri"}  # fmt: skip
+_JOINED = re.compile(r"\b(" + "|".join(re.escape(k) for k in JOINED) + r")\b", re.IGNORECASE)
+SPELLED = {"icecream": "ice cream", "colddrink": "cold drink", "coldcoffee": "cold coffee", "vadapav": "vada pav",
+           "panipuri": "pani puri"}  # fmt: skip
 
 # Shops rather than what was bought: "icecream from medical" is Food, not Health.
 PLACE_WORDS = {
@@ -121,6 +133,7 @@ BRANDS = {
     "inox": "INOX", "kfc": "KFC", "mcdonalds": "McDonald's", "dominos": "Domino's",
     "starbucks": "Starbucks", "jio": "Jio", "airtel": "Airtel", "irctc": "IRCTC", "oyo": "OYO",
     "nykaa": "Nykaa", "decathlon": "Decathlon", "apollo": "Apollo", "udemy": "Udemy",
+    "thumsup": "Thums Up", "dairymilk": "Dairy Milk", "kitkat": "KitKat", "redbull": "Red Bull",
 }  # fmt: skip
 
 
@@ -134,10 +147,9 @@ def _amount(token: str) -> int | None:
 
 
 def _describe(words: list[str]) -> str:
-    out = [BRANDS.get(w, w) for w in words]
-    first = out[0]
-    if first == words[0]:  # not a brand: sentence case
-        out[0] = first[:1].upper() + first[1:]
+    out = [BRANDS.get(w, SPELLED.get(w, w)) for w in words]
+    if words[0] not in BRANDS:  # not a brand: sentence case
+        out[0] = out[0][:1].upper() + out[0][1:]
     return " ".join(out)
 
 
@@ -208,6 +220,7 @@ def parse(text: str, ctx, *, now: datetime) -> GProposal | None:
     people = {p.name.lower() for p in ctx.people} | {
         alias.lower() for p in ctx.people for alias in (p.aliases or [])
     }
+    text = _JOINED.sub(lambda m: JOINED[m.group(1).lower()], text)
     parts = [p for p in SEPARATORS.split(text) if p and p.strip()]
     if not parts or len(parts) > MAX_ITEMS:
         return None

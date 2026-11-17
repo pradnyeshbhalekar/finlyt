@@ -1,12 +1,13 @@
 // Plan: this month's budget, today's limit and what's left, what's been saved for surprises,
 // the bigger spends set aside, and the Sunday check-in. Talk to Finlyt to make or change it.
 import { router } from "expo-router";
-import { BookmarkCheck, CalendarClock, ChartColumn, Check, ChevronRight, MessagesSquare, Plus, Target } from "lucide-react-native";
+import { BookmarkCheck, CalendarClock, ChartColumn, Check, ChevronRight, MessagesSquare, PiggyBank, Plus, Repeat, Target } from "lucide-react-native";
 import { useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, View } from "react-native";
 import Animated, { FadeInDown } from "react-native-reanimated";
 
 import { Coin } from "@/components/brand";
+import { habitIcon } from "@/components/habit-sheet";
 import { CategoryBadge } from "@/components/category-icon";
 import { Group, GroupItem, GroupLabel } from "@/components/group";
 import { TourTarget } from "@/components/tour";
@@ -15,7 +16,8 @@ import { Button, Icon, Sheet, Txt } from "@/components/ui";
 import { formatPaise } from "@/lib/money";
 import { DEFAULT_CHECK_IN, getCheckIn, saveCheckIn, WEEKDAYS, type CheckIn, type ReminderTime } from "@/lib/notifications";
 import { goalNote } from "@/lib/goals";
-import { useGoals, useMeta, usePlan } from "@/lib/queries";
+import { countNote, ruleNote, weekNote } from "@/lib/habits";
+import { useGoals, useHabits, useMeta, usePlan, useSavingPlan } from "@/lib/queries";
 import type { PlannedItem } from "@/lib/types";
 import { useTheme } from "@/lib/theme";
 
@@ -87,6 +89,8 @@ export default function PlanOverview() {
   const [item, setItem] = useState<PlannedItem | null>(null);
   const goals = useGoals();
   const goalItems = (goals.data?.items ?? []).filter((g) => !g.archived);
+  const saving = useSavingPlan();
+  const habits = useHabits();
 
   useEffect(() => {
     void getCheckIn().then(setCheckIn);
@@ -130,6 +134,70 @@ export default function PlanOverview() {
       />
     </Group>
   );
+  // How much to save, and the small habits that add up: shown with or without a plan.
+  const sp = saving.data;
+  const savingCard = sp ? (
+    <Pressable
+      onPress={() => router.push("/saving")}
+      accessibilityRole="button"
+      accessibilityHint="Opens your saving plan"
+      className="flex-row items-center gap-3 rounded-3xl border border-line px-4 py-3.5 active:opacity-70"
+    >
+      <Icon icon={PiggyBank} size={22} tone="accent" />
+      <View className="flex-1">
+        <Txt weight="semibold">
+          {sp.needs_income ? "How much should you save?" : `Save ${formatPaise(sp.target_paise ?? 0)} a month`}
+        </Txt>
+        <Txt tone={sp.fits === false ? "warn" : "muted"} className="text-sm" numberOfLines={2}>
+          {sp.needs_income
+            ? "Tell Finlyt your income and it suggests an amount"
+            : sp.fits === false
+              ? `${formatPaise(sp.short_paise ?? 0)} more than your spending leaves`
+              : sp.fits
+                ? `Fits, with ${formatPaise((sp.room_paise ?? 0) - (sp.target_paise ?? 0))} to spare`
+                : sp.target_is_set
+                  ? "Your own target"
+                  : "20% of what's left after commitments"}
+        </Txt>
+      </View>
+      <Icon icon={ChevronRight} size={16} tone="faint" />
+    </Pressable>
+  ) : null;
+  const habitItems = habits.data?.items.filter((h) => h.rule?.status !== "keep").slice(0, 3) ?? [];
+  const habitGroup = habits.data ? (
+    <>
+      <GroupLabel>Small habits</GroupLabel>
+      <Group>
+        {habitItems.map((h, i) => (
+          <GroupItem
+            key={h.key}
+            first={i === 0}
+            icon={habitIcon(h)}
+            title={h.label}
+            subtitle={`${countNote(h)} · ${weekNote(h) ?? ruleNote(h.rule, h)}`}
+            trailing={
+              <Txt weight="semibold" tone={h.over ? "warn" : "fg"}>
+                {formatPaise(h.year_paise)}/yr
+              </Txt>
+            }
+            onPress={() => router.push("/habits")}
+          />
+        ))}
+        <GroupItem
+          first={habitItems.length === 0}
+          icon={Repeat}
+          title={habitItems.length ? "See all" : "No small habits spotted"}
+          subtitle={
+            habitItems.length
+              ? `About ${formatPaise(habits.data.total_year_paise)} a year together`
+              : "Little things bought most days, like ice cream or a cold drink"
+          }
+          onPress={() => router.push("/habits")}
+        />
+      </Group>
+    </>
+  ) : null;
+
   const picker = (
     <TimePickerSheet
       key={round}
@@ -179,7 +247,13 @@ export default function PlanOverview() {
             </Txt>
           </Animated.View>
           </TourTarget>
-          <Animated.View entering={appear(3)} className="mt-8">
+          {savingCard ? (
+            <Animated.View entering={appear(3)} className="mt-8">
+              {savingCard}
+            </Animated.View>
+          ) : null}
+          <Animated.View entering={appear(3)}>{habitGroup}</Animated.View>
+          <Animated.View entering={appear(4)} className="mt-8">
             {links}
           </Animated.View>
         </ScrollView>
@@ -289,6 +363,12 @@ export default function PlanOverview() {
           </Animated.View>
         ) : null}
 
+        {savingCard ? (
+          <Animated.View entering={appear(3)} className="mt-8">
+            {savingCard}
+          </Animated.View>
+        ) : null}
+
         <Animated.View entering={appear(3)}>
           <GroupLabel>Savings goals</GroupLabel>
           <Group>
@@ -312,7 +392,9 @@ export default function PlanOverview() {
           </Group>
         </Animated.View>
 
-        <Animated.View entering={appear(4)}>
+        <Animated.View entering={appear(4)}>{habitGroup}</Animated.View>
+
+        <Animated.View entering={appear(5)}>
           <GroupLabel>More</GroupLabel>
           {links}
         </Animated.View>

@@ -14,7 +14,8 @@ from ..services.expenses import (
     get_expense,
     update_expense,
 )
-from ..timeutil import ist_day_bounds
+from ..services import habits
+from ..timeutil import ist_day_bounds, today_ist
 from ..validation import parse_body, parse_query
 
 bp = Blueprint("expenses", __name__)
@@ -43,7 +44,8 @@ def add_expense():
     user_id = current_user().id
     expense = create_expense(s, user_id, data, source="manual")
     s.commit()
-    return expense_json(get_expense(s, user_id, expense.id)), 201
+    out = expense_json(get_expense(s, user_id, expense.id))
+    return {**out, "habits": habits.alerts_after_save(s, user_id, [expense.id], today_ist())}, 201
 
 
 @bp.get("/expenses/<int:expense_id>")

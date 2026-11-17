@@ -151,6 +151,8 @@ export type LogCommitResult = {
   settlement_count: number;
   transfer_count: number;
   ignored_count: number;
+  /** Small-habit lines for what was just saved (older servers leave it out). */
+  habits?: HabitAlert[];
 };
 
 // ── Planning: monthly budget, Sunday check-in, daily limit ──────────────────
@@ -461,7 +463,7 @@ export type MonthReport = {
   notes: string[];
 };
 
-export type MemoryUpdate = { kind: "income" | "commitment" | "note"; text: string };
+export type MemoryUpdate = { kind: "income" | "commitment" | "note" | "habit"; text: string };
 
 export type Commitment = {
   id: number;
@@ -523,6 +525,105 @@ export type Goal = {
   archived: boolean;
   created_at: string;
   deposits?: { id: number; amount_paise: number; note: string | null; created_at: string }[];
+};
+
+// ── Small habits and the saving plan ────────────────────────────────────────
+
+/** A line after saving: past a limit, a big delivery order, or a habit just spotted. */
+export type HabitAlert = { key: string; label: string; kind: "over_limit" | "big_order" | "spotted"; text: string };
+
+export type HabitStatus = "limit" | "keep" | "need" | "later";
+
+export type HabitRule = {
+  status: HabitStatus;
+  /** At most this many times a week (0: stop). */
+  times_per_week: number | null;
+  /** Or a weekly budget (food delivery as meals). */
+  paise_per_week: number | null;
+  /** What a week cost when the limit was set. */
+  baseline_paise_per_week: number;
+  goal_id: number | null;
+  decided_on: string;
+};
+
+export type Habit = {
+  key: string;
+  label: string;
+  kind: "treat" | "repeat" | "delivery";
+  /** Over the last 4 weeks. */
+  days: number;
+  times: number;
+  spent_paise: number;
+  typical_paise: number;
+  month_paise: number;
+  year_paise: number;
+  /** The 4 weeks before. */
+  previous_paise: number;
+  this_week: { starts_on: string; times: number; spent_paise: number };
+  rule: HabitRule | null;
+  over: boolean;
+  /** Since the limit, in full weeks; last week's on its own (null before a full week). */
+  saved_paise: number | null;
+  saved_last_week_paise: number | null;
+  per_week: number;
+  /** Food delivery: a weekly budget a little under a usual week. */
+  suggested_budget_paise: number | null;
+  /** Food delivery, before you've said how you use it. */
+  needs_answer: boolean;
+  last_on: string | null;
+};
+
+export type Habits = {
+  window_days: number;
+  week_starts_on: string;
+  items: Habit[];
+  needs: { key: string; label: string }[];
+  total_month_paise: number;
+  total_year_paise: number;
+  update?: MemoryUpdate | null;
+};
+
+/** A decision about a habit: the body of PUT /api/habits/<key>. */
+export type HabitDecision = {
+  status: HabitStatus;
+  times_per_week?: number | null;
+  paise_per_week?: number | null;
+  label?: string;
+  goal_id?: number | null;
+  note?: string;
+};
+
+export type HabitQuestion = {
+  key: string;
+  label: string;
+  kind: Habit["kind"];
+  text: string;
+  options: (HabitDecision & { label: string })[];
+};
+
+export type SavingPlan = {
+  monthly_income_paise: number | null;
+  committed_paise: number;
+  after_commitments_paise: number | null;
+  suggested_paise: number | null;
+  target_paise: number | null;
+  target_is_set: boolean;
+  /** This month's budget, or usual spending plus commitments. */
+  spending_paise: number | null;
+  spending_basis: "budget" | "usual" | null;
+  usual_months: number;
+  room_paise: number | null;
+  fits: boolean | null;
+  short_paise: number | null;
+  goals: { id: number; name: string; left_paise: number; due_on: string | null; monthly_needed_paise: number | null }[];
+  goals_monthly_paise: number;
+  goals_need_more: boolean;
+  habits_month_paise: number;
+  habits_half_paise: number;
+  habits_saved_paise: number;
+  top_habit: { key: string; label: string; year_paise: number } | null;
+  month: { spent_paise: number; left_to_spend_paise: number | null; days_left: number; per_day_paise: number | null };
+  needs_income: boolean;
 };
 
 export type FeedbackKind = "idea" | "problem" | "praise";

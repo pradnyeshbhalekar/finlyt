@@ -163,6 +163,8 @@ function RootNavigator({ fontsLoaded }: { fontsLoaded: boolean }) {
         <Stack.Screen name="widgets" options={{ ...header, title: "Home screen widgets" }} />
         <Stack.Screen name="goals" options={{ ...header, title: "Savings goals" }} />
         <Stack.Screen name="goal/[id]" options={{ ...header, title: "Goal" }} />
+        <Stack.Screen name="habits" options={{ ...header, title: "Small habits" }} />
+        <Stack.Screen name="saving" options={{ ...header, title: "Saving plan" }} />
         <Stack.Screen name="settings" options={{ ...header, title: "Settings" }} />
         <Stack.Screen name="accounts" options={{ ...header, title: "Your accounts" }} />
         <Stack.Screen

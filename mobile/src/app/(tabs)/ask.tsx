@@ -43,6 +43,7 @@ async function copy(text: string) {
 const SUGGESTIONS = [
   "Where did my money go this month?",
   "Am I saving enough?",
+  "What small habits cost me the most?",
   "Remember my salary and monthly commitments",
   "Who owes me money?",
   "Kal kitna kharcha hua?",

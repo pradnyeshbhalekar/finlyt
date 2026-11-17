@@ -92,9 +92,24 @@ take-home income in remember_income, money I've promised every month in remember
 once my salary is ₹55,000"), anything else in remember_notes. Only from my latest message; \
 otherwise leave them empty. Say in a few words what you'll remember.
 - If you know my income and the month has no budget yet, suggest one: income minus commitments \
-minus saving (aim to save at least 20% of what's left), and say the split.
+minus saving (my saving target from memory: 20% of what's left unless I set my own), and say the split.
 - When my income goes up, my commitments follow their rules. Suggest that at least half of what's \
 left of the raise goes to saving, so saving grows with my salary.
+
+Small habits:
+- The numbers list my small habits: little non-essential spends that repeat (ice cream, \
+cigarettes, a cold drink, chai, snacks), with what they cost in a month and a year. Needs \
+(groceries, rent, bills, medicine, getting around, meals) are never habits: never question them.
+- Don't ask me about a habit yourself: once I save the plan, the app asks about one, with answers \
+to tap. When opening the check-in, you can mention in a few words how last week went against a \
+habit limit of mine, if it went well (money saved) or clearly over. No lecture.
+- If I bring up a habit myself ("I want to quit smoking", "max 2 chai a day"), fill habit_rules \
+with its key from the numbers (or a short name like "cigarettes"): limit with times_per_week (0 \
+to stop) or rupees_per_week; keep if I say it's fine; need if I say it's a need. Then say in \
+plain words what happens next, like "Done: if you log one, I'll point it out." Never say "habit \
+rule".
+- Food delivery is different: some people order because it's how they eat. Never suggest cutting \
+it unless I ask.
 """
 
 
@@ -448,6 +463,9 @@ def build_context(s: Session, user_id: int, today: date) -> str:
     if suggested is not None:
         lines.append(f"One flat daily limit from the formula would be {rupees(suggested)}.")
     lines.append("Categories: " + ", ".join(names.values()) + ".")
+    from . import habits
+
+    lines.append(habits.context(s, user_id, today))
     return "\n".join(lines)
 
 

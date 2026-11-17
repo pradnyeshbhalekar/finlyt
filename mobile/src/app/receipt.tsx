@@ -129,6 +129,7 @@ export default function Receipt() {
         input: "",
         questions: [],
         undoable: isUndoable(body),
+        habits: result.habits,
       });
       receiptDraft.reset();
     } catch (e) {

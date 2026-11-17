@@ -3,7 +3,7 @@
 // share it.
 import { useSyncExternalStore } from "react";
 
-import type { BankTxnItem, Proposal } from "./types";
+import type { BankTxnItem, HabitAlert, Proposal } from "./types";
 
 export type VoiceNote = { uri: string; ms: number };
 /** Gemini's reading of `input`, waiting to be checked. */
@@ -15,6 +15,8 @@ export type Saved = {
   questions: string[];
   /** Only plain expenses can be undone (deleting them); paybacks and txn marks can't yet. */
   undoable: boolean;
+  /** Small-habit lines the server sent back; Home shows one, per the alert setting. */
+  habits?: HabitAlert[];
 };
 
 type State = {

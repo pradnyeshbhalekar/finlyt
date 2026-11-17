@@ -162,13 +162,21 @@ def context(s: Session, user_id: int) -> str:
 
     lines.extend(goals.context_lines(s, user_id))
     if data["after_commitments_paise"] is not None:
+        from . import saving
+
         left = data["after_commitments_paise"]
-        save = left // 5 // 1000 * 1000
+        save, is_set = saving.target(s, user_id, left)
         lines.append(f"- Income left after commitments: {rupees(left)} a month.")
-        lines.append(
-            f"- Saving 20% of that is {rupees(save)} a month, which leaves {rupees(left - save)} a month "
-            "for everyday spending and planned items."
-        )
+        if is_set:
+            lines.append(
+                f"- My saving target (I set it): {rupees(save or 0)} a month, which leaves {rupees(left - (save or 0))} "
+                f"a month for everyday spending and planned items. 20% would be {rupees(saving.suggested(left) or 0)}."
+            )
+        else:
+            lines.append(
+                f"- Saving 20% of that is {rupees(save or 0)} a month, which leaves {rupees(left - (save or 0))} a month "
+                "for everyday spending and planned items. That's my saving target unless I set my own."
+            )
     return "What Finlyt remembers about my money:\n" + "\n".join(lines)
 
 

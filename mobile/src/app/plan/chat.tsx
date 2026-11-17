@@ -4,7 +4,7 @@
 // numbers you can change before confirming. The conversation lives in lib/plan-chat, so leaving
 // the screen keeps it (and a slow reply can notify you); the header's button starts it over.
 import { router, useNavigation } from "expo-router";
-import { ArrowUp, Check, Mic, Minus, Plus, RotateCcw, Square } from "lucide-react-native";
+import { ArrowUp, Check, Mic, RotateCcw, Square } from "lucide-react-native";
 import { useEffect, useLayoutEffect, useRef, useState, type ComponentRef, type ReactNode } from "react";
 import { ActivityIndicator, Pressable, ScrollView, TextInput, View } from "react-native";
 
@@ -13,18 +13,29 @@ import { CategoryBadge } from "@/components/category-icon";
 import { Choices } from "@/components/choices";
 import { MemoryUpdates } from "@/components/memory-updates";
 import { KeyboardAware } from "@/components/keyboard";
-import { Button, Icon, IconButton, Txt, type IconType } from "@/components/ui";
+import { AmountStepper, CountStepper } from "@/components/steppers";
+import { Button, IconButton, Txt } from "@/components/ui";
 import { useAuth } from "@/lib/auth";
 import { formatPaise } from "@/lib/money";
 import { getCheckIn, WEEKDAYS } from "@/lib/notifications";
 import { planChat, usePlanChatState } from "@/lib/plan-chat";
-import { useMeta, useSavePlan } from "@/lib/queries";
+import { fetchHabitQuestion, useDecideHabit, useMeta, useSavePlan } from "@/lib/queries";
 import { useQueryClient } from "@tanstack/react-query";
 
 import { SLOW_NOTE, useSlow } from "@/lib/reply-alert";
 import { useDictation } from "@/lib/speech";
 import { BRAND, fonts, useTheme, WHITE } from "@/lib/theme";
-import type { Category, ProposedPlan } from "@/lib/types";
+import type { Category, HabitDecision, ProposedPlan } from "@/lib/types";
+
+/** What Finlyt says once you've answered the habit question. */
+function habitReply(d: HabitDecision): string {
+  if (d.status === "keep") return "Fair enough. I won't bring it up for a while.";
+  if (d.status === "need") return "Noted: that's a need, not a habit.";
+  if (d.status === "later") return "Sure, another time.";
+  if (d.paise_per_week) return `Got it: ${formatPaise(d.paise_per_week)} a week. I'll say after logging if a week goes over.`;
+  if (d.times_per_week === 0) return "Got it. If you log it again, I'll say so after saving.";
+  return `Got it: at most ${d.times_per_week} a week. I'll say after logging if you go past it.`;
+}
 
 function shortDate(iso: string): string {
   const [y, m, d] = iso.split("-").map(Number);
@@ -46,106 +57,6 @@ function YouSay({ text }: { text: string }) {
       <Txt tone="onBrand" className="text-base leading-6">
         {text}
       </Txt>
-    </View>
-  );
-}
-
-function RoundButton({
-  icon,
-  label,
-  onPress,
-  disabled = false,
-}: {
-  icon: IconType;
-  label: string;
-  onPress: () => void;
-  disabled?: boolean;
-}) {
-  return (
-    <Pressable
-      onPress={onPress}
-      disabled={disabled}
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      hitSlop={4}
-      className={`h-9 w-9 items-center justify-center rounded-full bg-surface active:opacity-70 ${disabled ? "opacity-40" : ""}`}
-    >
-      <Icon icon={icon} size={18} />
-    </Pressable>
-  );
-}
-
-/** A rupee amount with − and +, which you can also tap and type. Rounded to ₹10. */
-function AmountStepper({
-  label,
-  hint,
-  paise,
-  min,
-  step,
-  onChange,
-}: {
-  label: string;
-  hint?: string;
-  paise: number;
-  min: number;
-  step: number;
-  onChange: (paise: number) => void;
-}) {
-  const [draft, setDraft] = useState<string | null>(null);
-  function commit() {
-    if (draft === null) return;
-    const rupees = parseInt(draft.replace(/\D/g, ""), 10);
-    setDraft(null);
-    if (!Number.isNaN(rupees)) onChange(Math.max(min, Math.round(rupees / 10) * 1000));
-  }
-  return (
-    <View className="flex-row items-center gap-2 py-2">
-      <View className="flex-1">
-        <Txt weight="medium">{label}</Txt>
-        {hint ? (
-          <Txt tone="muted" className="text-xs">
-            {hint}
-          </Txt>
-        ) : null}
-      </View>
-      <RoundButton icon={Minus} label={`Less for ${label}`} onPress={() => onChange(Math.max(min, paise - step))} disabled={paise - step < min} />
-      <View className="w-24 flex-row items-center justify-center">
-        <Txt weight="semibold" className="text-lg">
-          ₹
-        </Txt>
-        <TextInput
-          value={draft ?? String(Math.round(paise / 100))}
-          onChangeText={setDraft}
-          onEndEditing={commit}
-          onBlur={commit}
-          keyboardType="number-pad"
-          selectTextOnFocus
-          accessibilityLabel={label}
-          className="min-w-10 py-0 text-center text-lg text-fg"
-          style={{ fontFamily: fonts.semibold }}
-        />
-      </View>
-      <RoundButton icon={Plus} label={`More for ${label}`} onPress={() => onChange(paise + step)} />
-    </View>
-  );
-}
-
-function CountStepper({ value, onChange }: { value: number; onChange: (n: number) => void }) {
-  return (
-    <View className="flex-row items-center gap-2 py-2">
-      <View className="flex-1">
-        <Txt weight="medium">Bigger days</Txt>
-        <Txt tone="muted" className="text-xs">
-          a week, for the days that cost more
-        </Txt>
-      </View>
-      <RoundButton icon={Minus} label="Fewer bigger days" onPress={() => onChange(Math.max(0, value - 1))} disabled={value === 0} />
-      <View className="w-24 items-center">
-        <Txt weight="semibold" className="text-lg">
-          {value}
-        </Txt>
-      </View>
-      <RoundButton icon={Plus} label="More bigger days" onPress={() => onChange(Math.min(6, value + 1))} disabled={value === 6} />
     </View>
   );
 }
@@ -185,7 +96,7 @@ function PlanCard({
       </Txt>
       <View className="mt-2">
         <AmountStepper label="Usual day" hint="most of your days" paise={daily} min={1000} step={1000} onChange={changeDaily} />
-        <CountStepper value={bigDays} onChange={setBigDays} />
+        <CountStepper label="Bigger days" hint="a week, for the days that cost more" value={bigDays} max={6} onChange={setBigDays} />
         {bigDays > 0 ? (
           <AmountStepper label="Bigger day" hint="up to" paise={big} min={daily + 1000} step={5000} onChange={setBig} />
         ) : null}
@@ -252,7 +163,8 @@ export default function PlanChat() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const save = useSavePlan();
-  const { messages, plan, planRound, options, pending, error: chatError, saved } = usePlanChatState();
+  const { messages, plan, planRound, options, pending, error: chatError, saved, habit } = usePlanChatState();
+  const decideHabit = useDecideHabit();
   const slow = useSlow(pending);
   const [checkInDay, setCheckInDay] = useState(6);
   const inputRef = useRef<ComponentRef<typeof TextInput>>(null);
@@ -323,6 +235,29 @@ export default function PlanChat() {
       planChat.finish(`Done. ${limits} from today. See you on ${WEEKDAYS[checkInDay]}.`);
     } catch (e) {
       setError((e as Error).message);
+      return;
+    }
+    // Then one small habit worth a look, if there is one. An older server just doesn't ask.
+    const question = await fetchHabitQuestion().catch(() => null);
+    if (question) planChat.askHabit(question);
+  }
+
+  /** An answer to the habit question: saved as a decision straight away, no AI involved. */
+  async function answerHabit(label: string) {
+    const question = habit;
+    const option = question?.options.find((o) => o.label === label);
+    if (!question || !option) return;
+    const decision: HabitDecision = {
+      status: option.status,
+      times_per_week: option.times_per_week,
+      paise_per_week: option.paise_per_week,
+      note: option.note,
+    };
+    try {
+      const result = await decideHabit.mutateAsync({ key: question.key, ...decision });
+      planChat.answeredHabit(label, habitReply(decision), result.update ? [result.update] : undefined);
+    } catch (e) {
+      setError((e as Error).message);
     }
   }
 
@@ -378,6 +313,13 @@ export default function PlanChat() {
             categories={categories}
             saving={save.isPending}
             onUse={(chosen) => void use(chosen)}
+          />
+        ) : null}
+        {saved && habit ? (
+          <Choices
+            options={habit.options.map((o) => o.label)}
+            onPick={(answer) => void answerHabit(answer)}
+            disabled={decideHabit.isPending}
           />
         ) : null}
         {saved ? (

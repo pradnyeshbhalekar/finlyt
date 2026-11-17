@@ -6,7 +6,7 @@ import { useSyncExternalStore } from "react";
 
 import { api, ApiError } from "./api";
 import { alertIfAway } from "./reply-alert";
-import type { ChatMessage, MemoryUpdate, PlanTurn, ProposedPlan } from "./types";
+import type { ChatMessage, HabitQuestion, MemoryUpdate, PlanTurn, ProposedPlan } from "./types";
 
 export type PlanMessage = ChatMessage & { memory?: MemoryUpdate[] };
 
@@ -21,9 +21,20 @@ type State = {
   error: string | null;
   /** The plan was saved: the chat is finished. */
   saved: boolean;
+  /** After saving, one question about a small habit, with answers to tap (no AI needed). */
+  habit: HabitQuestion | null;
 };
 
-const EMPTY: State = { messages: [], plan: null, planRound: 0, options: [], pending: false, error: null, saved: false };
+const EMPTY: State = {
+  messages: [],
+  plan: null,
+  planRound: 0,
+  options: [],
+  pending: false,
+  error: null,
+  saved: false,
+  habit: null,
+};
 /** An unfinished chat older than this starts over: the week it was about has moved on. */
 const KEEP_MS = 6 * 60 * 60 * 1000;
 const URL = "/plan/chat";
@@ -104,6 +115,17 @@ export const planChat = {
   /** The plan was saved: say so, and finish the chat. */
   finish(text: string) {
     set({ messages: [...state.messages, { role: "finlyt", text }], saved: true, options: [] });
+  },
+  /** After the plan: ask about one small habit (from GET /api/habits/question). */
+  askHabit(question: HabitQuestion) {
+    set({ messages: [...state.messages, { role: "finlyt", text: question.text }], habit: question });
+  },
+  /** The habit question was answered: my answer, then Finlyt's line and what it remembered. */
+  answeredHabit(answer: string, reply: string, memory?: MemoryUpdate[]) {
+    set({
+      messages: [...state.messages, { role: "user", text: answer }, { role: "finlyt", text: reply, memory }],
+      habit: null,
+    });
   },
   watch(isWatching: (() => boolean) | null) {
     watcher = isWatching;

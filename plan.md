@@ -72,6 +72,7 @@ On Android, the free sign-in library uses Google's legacy Sign-In SDK. If Google
 | `ask_threads` · `ask_messages` | Ask Finlyt chats and their turns (with the model, data tools used, and answers to tap when Finlyt asked back). Deleted after `ASK_KEEP_DAYS` (10) without use |
 | `money_profiles` · `commitments` · `money_notes` | What Finlyt remembers: monthly income; money promised every month (with income rules like ₹6,000 once salary is ₹55,000, and payoff progress); notes |
 | `plans` | From each check-in: the usual-day limit, and optionally a bigger-day limit for N days a week. `users.check_in_weekday` is the check-in day; weeks start on it |
+| `habit_rules` | What I decided about a small habit, by its key ("ice cream"): `limit` (times a week, 0 = stop, or a weekly budget for food delivery), `keep` (fine), `need` (not a habit), `later`. Keeps what a week cost when a limit was set, so its savings can be counted. `money_profiles.saving_target_paise` is my own saving target (null: 20% of income after commitments) |
 
 Invariants:
 
@@ -112,6 +113,8 @@ All routes are under `/api` and use JSON. Every route needs `Authorization: Bear
 | `GET /api/memory` · `PUT/DELETE /api/memory/income` · `POST/PATCH/DELETE /api/memory/commitments` · `DELETE /api/memory/notes/:id` | — | What Finlyt remembers, to see and correct |
 | `PUT /api/plan/check-in` | 3b | The weekly check-in day (Monday 0 to Sunday 6). The time stays on the phone |
 | `GET /api/ask/threads` · `GET/DELETE /api/ask/threads/:id` | — | Past chats (newest first, with `keep_days`) · one chat's messages · delete it. Chats untouched for 10 days are deleted on any Ask call |
+| `GET /api/habits` · `GET /api/habits/question` · `PUT/DELETE /api/habits/:key` | — | Small habits over 28 days (how often, a month, a year, this week against the limit, what a limit saved) · the check-in's closing question with answers that carry their decision · decide (`status`, `times_per_week`, `paise_per_week`, optional memory `note`) or forget. `POST /api/log/commit` and `POST /api/expenses` also return `habits`: lines for what was just saved (`over_limit`, `big_order`, `spotted`) |
+| `GET/PUT /api/saving` | — | The saving plan: target (mine or the 20% suggestion), whether the budget or usual spending leaves room, goals, habits, this month's left-to-spend · set my own target (`null` goes back to the suggestion) |
 
 ## Screens
 
@@ -138,6 +141,9 @@ Redesigned on 2026-11-05 to be minimal: Lucide icons, Inter, and no emojis anywh
 - **Scan a receipt** (`app/receipt.tsx`, modal): Google's document scanner (`modules/doc-scanner`), then "Does this look right?" with the shop, total, day, category and account, and one question: does anyone owe you, and how is it split (Equal, I pay 25%, I pay 75%, They pay all, Custom). "Edit details" opens the full check screen. The scan is kept in `lib/receipt-draft.ts` while it's read, so leaving doesn't lose it and a notification says when it's ready.
 - **Month report ⓘ** (`components/info.tsx`, `lib/report-help.ts`): every number and section has an ⓘ that explains it in a sheet, with that month's own figures.
 - **Edit entry** (`expense/edit`): from the pencil on an entry's sheet. What for, category, and for a plain entry the amount and account, and who owes part of it (until someone has paid back).
+- **Saving plan** (`app/saving.tsx`, from the Plan tab card or Settings): how much to save a month, suggested as 20% of income after commitments (or your own), whether your spending leaves room for it, how it adds up, this month's left-to-spend, and where it could go (goals, small habits). Asks for your income first if Finlyt doesn't know it.
+- **Small habits** (`app/habits.tsx`, `components/habit-sheet.tsx`; Plan tab group, Settings): little non-essential spends that repeat. A watch-list item (cigarettes, paan, drinks, ice cream, chocolate and sweets, cold drinks, chai and coffee, snacks) counts on 6+ days in 4 weeks; anything else small (≤ ₹300 typical) on 8+. Needs never count: groceries, rent, bills, medicine, getting around, meals. Each shows its year cost and this week against your limit; the sheet has what-if limits with what they save a year, It's fine / It's a need, and "Put ₹X in <goal>" from last week's saving. Food delivery is asked first: meals or both get a weekly budget (and big orders are pointed out), treats a limit.
+- **Habit alerts** (Settings → Logging): after saving, one line in the "Saved" toast about a habit: only past my limit (default), also when one is spotted, or off. The weekly check-in ends, after "Use this plan", with one question about the costliest habit with no decision, with answers to tap (no AI); the AI also saves a decision if I bring one up.
 - **Your accounts** (`accounts`): rename Bank and Cash to your own, add more, pick the usual one.
 - The check-in chat and an import in progress are kept when you leave their screens (`lib/plan-chat.ts`, `lib/import-draft.ts`).
 - **Answer notifications** (`lib/reply-alert.ts`): when the AI answers and you're not on that screen (or not in the app), a notification says so and opens it. Logging, Ask, the check-in chat and Import. Waits over 6 s say you can carry on.
@@ -383,6 +389,7 @@ finlyt/
 - [x] **4. Import from an AI chat** (Claude, ChatGPT, Gemini): prompt, preview with duplicates and SMS links, batch save, undo; onboarding step (optional, with a skip) and Settings (deployed 2026-11-07)
 - [—] **5. SMS auto-fetch**: **removed 2026-11-10** at the user's request (see "SMS pipeline"). Existing bank txns and the "To log" list remain
 - [ ] **6. Owed to me**: payback matching, charts, release APK
+- [x] **7. Saving plan and small habits** (2026-11-17): app out over the air (OTA `01a1eabb`); waiting on the Neon migration and a Vercel deploy
 
 ## Waiting on
 

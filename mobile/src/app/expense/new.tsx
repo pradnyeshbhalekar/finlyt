@@ -93,6 +93,7 @@ export default function AddExpense() {
         input: "",
         questions: [],
         undoable: true,
+        habits: expense.habits,
       });
     } catch (e) {
       setError((e as Error).message);

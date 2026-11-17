@@ -11,8 +11,8 @@ from ..db import get_session
 from ..errors import ApiError
 from ..gemini import get_proposer
 from ..schemas import LogCommitIn, ProposeIn
-from ..services import proposals, quick_parse, sms_paste
-from ..timeutil import now_utc
+from ..services import habits, proposals, quick_parse, sms_paste
+from ..timeutil import now_utc, today_ist
 from ..validation import parse_body
 
 bp = Blueprint("log", __name__)
@@ -155,6 +155,8 @@ def commit():
     """Save a reviewed proposal in one database transaction."""
     data = parse_body(LogCommitIn)
     s = get_session()
-    result = proposals.commit(s, current_user().id, data)
+    user_id = current_user().id
+    result = proposals.commit(s, user_id, data)
     s.commit()
+    result["habits"] = habits.alerts_after_save(s, user_id, result["expense_ids"], today_ist())
     return result, 201

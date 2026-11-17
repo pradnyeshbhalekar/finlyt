@@ -15,8 +15,8 @@ export function Choices({
 }: {
   options: string[];
   onPick: (answer: string) => void;
-  /** Focus the text box so you can write your own answer. */
-  onOther: () => void;
+  /** Focus the text box so you can write your own answer. Without it, there's no "Type my own". */
+  onOther?: () => void;
   disabled?: boolean;
   /** Line up under a message that has the coin beside it (the check-in). */
   inset?: boolean;
@@ -35,18 +35,20 @@ export function Choices({
           <Txt className="text-base">{option}</Txt>
         </Pressable>
       ))}
-      <Pressable
-        onPress={onOther}
-        disabled={disabled}
-        accessibilityRole="button"
-        hitSlop={10}
-        className="flex-row items-center gap-1.5 self-start px-1 py-1.5"
-      >
-        <Icon icon={Pencil} size={14} tone="muted" />
-        <Txt tone="muted" className="text-sm">
-          Type my own
-        </Txt>
-      </Pressable>
+      {onOther ? (
+        <Pressable
+          onPress={onOther}
+          disabled={disabled}
+          accessibilityRole="button"
+          hitSlop={10}
+          className="flex-row items-center gap-1.5 self-start px-1 py-1.5"
+        >
+          <Icon icon={Pencil} size={14} tone="muted" />
+          <Txt tone="muted" className="text-sm">
+            Type my own
+          </Txt>
+        </Pressable>
+      ) : null}
     </Animated.View>
   );
 }

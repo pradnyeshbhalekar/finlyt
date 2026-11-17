@@ -367,3 +367,27 @@ class DepositIn(_In):
         if self.amount_paise == 0:
             raise ValueError("An amount of zero doesn't change anything")
         return self
+
+
+class HabitRuleIn(_In):
+    """What I decided about a small habit. A limit needs times_per_week (0 = stop) or a weekly
+    budget (paise_per_week, for food delivery)."""
+
+    status: Literal["limit", "keep", "need", "later"]
+    times_per_week: int | None = Field(default=None, ge=0, le=50)
+    paise_per_week: int | None = Field(default=None, gt=0)
+    label: str | None = Field(default=None, min_length=1, max_length=60)
+    goal_id: int | None = None
+    note: str | None = Field(default=None, max_length=300, description="Also remember this (memory note)")
+
+    @model_validator(mode="after")
+    def _limit_has_a_number(self) -> HabitRuleIn:
+        if self.status == "limit" and self.times_per_week is None and self.paise_per_week is None:
+            raise ValueError("a limit needs times_per_week or paise_per_week")
+        return self
+
+
+class SavingTargetIn(_In):
+    """My own monthly saving target, or null to follow Finlyt's suggestion."""
+
+    target_paise: int | None = Field(gt=0)

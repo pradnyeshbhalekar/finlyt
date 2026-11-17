@@ -1,4 +1,4 @@
-// On-device preferences: theme, whether Gemini's entries need a review, and onboarding.
+// On-device preferences: theme, whether Gemini's entries need a review, onboarding, habit alerts.
 import * as SecureStore from "expo-secure-store";
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 
@@ -13,9 +13,14 @@ export type Prefs = {
   onboarded: boolean;
   /** The tour version last shown (lib/tour TOUR_VERSION); a newer one is shown once. */
   tourVersion: number;
+  /** After saving, a line about a small habit: only past my own limit, also when one is
+   *  spotted, or never (lib/habits pickAlert). */
+  habitAlerts: HabitAlertLevel;
 };
 
-const DEFAULTS: Prefs = { theme: "auto", reviewBeforeSave: true, onboarded: false, tourVersion: 0 };
+export type HabitAlertLevel = "limit" | "spotted" | "off";
+
+const DEFAULTS: Prefs = { theme: "auto", reviewBeforeSave: true, onboarded: false, tourVersion: 0, habitAlerts: "limit" };
 
 type PrefsState = Prefs & { loaded: boolean; update: (change: Partial<Prefs>) => void };
 

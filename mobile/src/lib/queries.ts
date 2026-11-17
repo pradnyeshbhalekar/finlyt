@@ -7,6 +7,11 @@ import type {
   ActivityPage,
   DuplicateGroup,
   Goal,
+  HabitAlert,
+  HabitDecision,
+  HabitQuestion,
+  Habits,
+  SavingPlan,
   AskThread,
   AskThreadList,
   AskTurn,
@@ -80,6 +85,8 @@ export function useRefreshMoney() {
       queryClient.invalidateQueries({ queryKey: ["report"] }),
       queryClient.invalidateQueries({ queryKey: ["memory"] }),
       queryClient.invalidateQueries({ queryKey: ["duplicates"] }),
+      queryClient.invalidateQueries({ queryKey: ["habits"] }),
+      queryClient.invalidateQueries({ queryKey: ["saving"] }),
     ]);
 }
 
@@ -143,7 +150,7 @@ export function useDeleteAccount() {
 export function useCreateExpense() {
   const refresh = useRefreshMoney();
   return useMutation({
-    mutationFn: (body: NewExpense) => api<Expense>("/api/expenses", { method: "POST", body }),
+    mutationFn: (body: NewExpense) => api<Expense & { habits?: HabitAlert[] }>("/api/expenses", { method: "POST", body }),
     onSuccess: refresh,
   });
 }
@@ -413,6 +420,7 @@ function useMemoryChange<T>(request: (arg: T) => Promise<MoneyMemory>) {
     onSuccess: (data) => {
       queryClient.setQueryData(["memory"], data);
       void queryClient.invalidateQueries({ queryKey: ["plan"] });
+      void queryClient.invalidateQueries({ queryKey: ["saving"] }); // income and commitments set the target
     },
   });
 }
@@ -495,5 +503,53 @@ export function useGoalDeposit() {
 export function useSendFeedback() {
   return useMutation({
     mutationFn: (body: FeedbackIn) => api<{ sent: boolean }>("/api/feedback", { method: "POST", body }),
+  });
+}
+
+// ── Small habits and the saving plan ─────────────────────────────────────────
+
+export function useHabits() {
+  return useQuery({ queryKey: ["habits"], queryFn: () => api<Habits>("/api/habits"), retry: false });
+}
+
+/** The check-in's closing question about one habit (null: nothing to ask). */
+export function fetchHabitQuestion() {
+  return api<{ question: HabitQuestion | null }>("/api/habits/question").then((r) => r.question);
+}
+
+function useHabitChange<T>(request: (arg: T) => Promise<Habits>) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: request,
+    onSuccess: (data) => {
+      queryClient.setQueryData(["habits"], data);
+      void queryClient.invalidateQueries({ queryKey: ["saving"] });
+      void queryClient.invalidateQueries({ queryKey: ["memory"] });
+    },
+  });
+}
+
+export function useDecideHabit() {
+  return useHabitChange(({ key, ...body }: HabitDecision & { key: string }) =>
+    api<Habits>(`/api/habits/${encodeURIComponent(key)}`, { method: "PUT", body }),
+  );
+}
+
+export function useForgetHabit() {
+  return useHabitChange((key: string) => api<Habits>(`/api/habits/${encodeURIComponent(key)}`, { method: "DELETE" }));
+}
+
+export function useSavingPlan() {
+  return useQuery({ queryKey: ["saving"], queryFn: () => api<SavingPlan>("/api/saving"), retry: false });
+}
+
+export function useSetSavingTarget() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (target_paise: number | null) => api<SavingPlan>("/api/saving", { method: "PUT", body: { target_paise } }),
+    onSuccess: (data) => {
+      queryClient.setQueryData(["saving"], data);
+      void queryClient.invalidateQueries({ queryKey: ["memory"] });
+    },
   });
 }

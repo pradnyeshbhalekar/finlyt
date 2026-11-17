@@ -441,6 +441,8 @@ class MoneyProfile(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
     monthly_income_paise: Mapped[int | None] = mapped_column(BigInteger)
     income_note: Mapped[str | None] = mapped_column(String(200))
+    # How much I mean to save a month. None: follow Finlyt's suggestion (services/saving.py).
+    saving_target_paise: Mapped[int | None] = mapped_column(BigInteger)
     updated_at: Mapped[datetime] = _updated()
 
 
@@ -511,3 +513,37 @@ class GoalDeposit(Base):
     amount_paise: Mapped[int] = mapped_column(BigInteger)  # negative when taken back out
     note: Mapped[str | None] = mapped_column(String(120))
     created_at: Mapped[datetime] = _created()
+
+
+HABIT_STATUSES = ("limit", "keep", "need", "later")
+
+
+class HabitRule(Base):
+    """What I decided about a small habit (services/habits.py), by its key ("ice cream").
+
+    limit: at most `times_per_week` (0 means stop) or `paise_per_week` (a budget, for food
+    delivery). keep: it's fine, don't nag. need: not a habit at all, leave it out. later: ask me
+    another time. `baseline_paise_per_week` is what a week cost when I decided, so what I save
+    from then on can be counted.
+    """
+
+    __tablename__ = "habit_rules"
+    __table_args__ = (
+        UniqueConstraint("user_id", "key"),
+        CheckConstraint(one_of("status", HABIT_STATUSES), name="status"),
+        CheckConstraint("times_per_week IS NULL OR times_per_week BETWEEN 0 AND 50", name="times_range"),
+        CheckConstraint("paise_per_week IS NULL OR paise_per_week > 0", name="budget_positive"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = _owner()
+    key: Mapped[str] = mapped_column(String(60))
+    label: Mapped[str] = mapped_column(String(60))
+    status: Mapped[str] = mapped_column(String(8))
+    times_per_week: Mapped[int | None] = mapped_column(SmallInteger)
+    paise_per_week: Mapped[int | None] = mapped_column(BigInteger)
+    baseline_paise_per_week: Mapped[int] = mapped_column(BigInteger, server_default=text("0"))
+    goal_id: Mapped[int | None] = mapped_column(ForeignKey("goals.id", ondelete="SET NULL"))
+    decided_on: Mapped[date] = mapped_column(Date)
+    created_at: Mapped[datetime] = _created()
+    updated_at: Mapped[datetime] = _updated()

@@ -201,6 +201,17 @@ class GCommitment(BaseModel):
     notes: str | None = None
 
 
+class GHabitRule(BaseModel):
+    """What I decided about a small habit when you asked about it."""
+
+    habit: str = Field(description='The habit\'s key from the numbers, e.g. "ice cream"')
+    decision: str = Field(description="limit, keep (it's fine), need (not a habit) or later (not now)")
+    times_per_week: int | None = Field(default=None, description="For a limit: at most this many times a week, 0 to stop")
+    rupees_per_week: float | None = Field(
+        default=None, description="For a limit as a weekly budget instead (food delivery as meals), in rupees"
+    )
+
+
 class GPlanTurn(BaseModel):
     model_config = ConfigDict(json_schema_extra=_all_required)
 
@@ -224,6 +235,9 @@ class GPlanTurn(BaseModel):
     )
     remember_notes: list[str] = Field(
         default_factory=list, description="Other lasting facts about my money from my latest message; else empty"
+    )
+    habit_rules: list[GHabitRule] = Field(
+        default_factory=list, description="What my latest message decides about a small habit you asked about; else empty"
     )
 
 

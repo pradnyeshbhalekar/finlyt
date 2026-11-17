@@ -255,6 +255,18 @@ _DATES = {
     "end_date": {"type": "string", "description": "Last day, YYYY-MM-DD (IST), inclusive. Default: today."},
 }
 
+def small_habits(s: Session, user_id: int, args: dict) -> dict:
+    from . import habits
+
+    return reports.for_model(habits.habits(s, user_id, today_ist()))
+
+
+def saving_plan(s: Session, user_id: int, args: dict) -> dict:
+    from . import saving
+
+    return reports.for_model(saving.saving_plan(s, user_id, today_ist()))
+
+
 TOOLS: list[Tool] = [
     Tool(
         "spending_summary",
@@ -341,6 +353,25 @@ TOOLS: list[Tool] = [
         "dates. For 'am I spending more than I earn' and 'how much can I save'. Default: the last 3 months.",
         {"type": "object", "properties": dict(_DATES), "additionalProperties": False},
         money_in_and_out,
+    ),
+    Tool(
+        "small_habits",
+        "My small habits over the last 4 weeks: little non-essential spends that repeat (ice cream, "
+        "cigarettes, cold drinks, chai, snacks, anything bought on most days), how often, what each costs "
+        "a month and a year, my limits on them and what those saved. Needs (groceries, rent, bills, "
+        "medicine, getting around, meals) are never habits. For 'what small habits cost me the most', "
+        "'where can I cut back' and saving questions.",
+        {"type": "object", "properties": {}, "additionalProperties": False},
+        small_habits,
+    ),
+    Tool(
+        "saving_plan",
+        "How much I mean to save a month (my own target, or 20% of income after commitments), whether "
+        "my usual spending or budget leaves room for it, what my goals need a month, what small habits "
+        "cost, and this month so far: spent, and what's left to spend to still save the target. For "
+        "'how much should I save', 'am I saving enough' and 'can I afford my goals'.",
+        {"type": "object", "properties": {}, "additionalProperties": False},
+        saving_plan,
     ),
     Tool(
         "categories_and_accounts",

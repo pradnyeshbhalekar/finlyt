@@ -15,6 +15,8 @@ import {
   LogOut,
   MessageSquareHeart,
   Pencil,
+  PiggyBank,
+  Repeat,
   Sparkles,
   Target,
 } from "lucide-react-native";
@@ -41,6 +43,8 @@ import {
   type CheckIn,
   type ReminderTime,
 } from "@/lib/notifications";
+import { askSheet } from "@/lib/ask-sheet";
+import { ALERT_LEVELS, alertLevelLabel } from "@/lib/habits";
 import { usePrefs } from "@/lib/prefs";
 import { tour } from "@/lib/tour";
 import { useImportBatches, useMeta } from "@/lib/queries";
@@ -110,7 +114,9 @@ export default function Settings() {
       <GroupLabel>Your money</GroupLabel>
       <Group>
         <GroupItem first icon={ChartColumn} title="This month's report" onPress={() => router.push("/report")} />
+        <GroupItem icon={PiggyBank} title="Saving plan" onPress={() => router.push("/saving")} />
         <GroupItem icon={Target} title="Savings goals" onPress={() => router.push("/goals")} />
+        <GroupItem icon={Repeat} title="Small habits" onPress={() => router.push("/habits")} />
         <GroupItem icon={BookmarkCheck} title="What Finlyt remembers" onPress={() => router.push("/memory")} />
         <GroupItem
           icon={Download}
@@ -140,6 +146,22 @@ export default function Settings() {
           title="Your accounts"
           subtitle={(meta.data?.accounts ?? []).map((a) => a.name).join(", ") || "The ways you pay"}
           onPress={() => router.push("/accounts")}
+        />
+        <GroupItem
+          icon={Repeat}
+          title="Habit alerts"
+          subtitle={`${alertLevelLabel(prefs.habitAlerts)}: a line after saving about a small habit`}
+          onPress={() =>
+            askSheet({
+              title: "Habit alerts",
+              message:
+                "After you save something like ice cream or cigarettes, Finlyt can add a line about it. Needs like groceries and bills never get one.",
+              actions: ALERT_LEVELS.map((level) => ({
+                label: `${level.label}${level.value === prefs.habitAlerts ? " (now)" : ""}`,
+                onPress: () => prefs.update({ habitAlerts: level.value }),
+              })),
+            })
+          }
         />
         <GroupItem icon={Pencil} title="Add an entry by hand" onPress={() => router.push("/expense/new")} />
       </Group>

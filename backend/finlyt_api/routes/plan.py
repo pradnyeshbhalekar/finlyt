@@ -9,7 +9,7 @@ from ..db import get_session
 from ..errors import ApiError
 from ..gemini import get_planner
 from ..schemas import CheckInIn, PlanChatIn, PlanIn
-from ..services import memory, planning
+from ..services import habits, memory, planning
 from ..timeutil import today_ist
 from ..validation import parse_body
 
@@ -85,6 +85,39 @@ def remember(s, user_id: int, turn) -> list[memory.Update]:
                 updates.append(memory.add_note(s, user_id, note))
     except ApiError:
         pass
+    updates += remember_habits(s, user_id, turn)
+    return updates
+
+
+def remember_habits(s, user_id: int, turn) -> list[memory.Update]:
+    """Decisions about small habits from the check-in. One the model got wrong is skipped."""
+    from ..money import to_paise
+
+    today = today_ist()
+    updates: list[memory.Update] = []
+    for rule in getattr(turn, "habit_rules", None) or []:
+        decision = (rule.decision or "").strip().lower()
+        key = habits.find_key(s, user_id, rule.habit or "", today)
+        if key is None or decision not in ("limit", "keep", "need", "later"):
+            continue
+        budget = to_paise(rule.rupees_per_week) if rule.rupees_per_week and rule.rupees_per_week > 0 else None
+        times = rule.times_per_week if rule.times_per_week is not None and 0 <= rule.times_per_week <= 50 else None
+        if decision == "limit" and times is None and budget is None:
+            continue
+        try:
+            _, update = habits.set_rule(
+                s,
+                user_id,
+                key,
+                today,
+                status=decision,
+                times_per_week=times if budget is None else None,
+                paise_per_week=budget,
+            )
+        except ApiError:
+            continue
+        if update:
+            updates.append(update)
     return updates
 
 

@@ -156,6 +156,7 @@ export default function Review() {
         input,
         questions: [],
         undoable: isUndoable(body),
+        habits: result.habits,
       });
     } catch (e) {
       setError((e as Error).message);
