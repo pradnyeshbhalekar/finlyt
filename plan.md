@@ -389,7 +389,7 @@ finlyt/
 - [x] **4. Import from an AI chat** (Claude, ChatGPT, Gemini): prompt, preview with duplicates and SMS links, batch save, undo; onboarding step (optional, with a skip) and Settings (deployed 2026-11-07)
 - [—] **5. SMS auto-fetch**: **removed 2026-11-10** at the user's request (see "SMS pipeline"). Existing bank txns and the "To log" list remain
 - [ ] **6. Owed to me**: payback matching, charts, release APK
-- [x] **7. Saving plan and small habits** (2026-11-17): app out over the air (OTA `01a1eabb`); waiting on the Neon migration and a Vercel deploy
+- [x] **7. Saving plan and small habits** (2026-11-17): migration on Neon, backend on Vercel, app over the air (OTA `01a1eabb`)
 
 ## Waiting on
 
