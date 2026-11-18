@@ -684,3 +684,65 @@ def alerts_after_save(s: Session, user_id: int, expense_ids: list[int], today: d
         logging.getLogger(__name__).exception("habit alerts failed")
         s.rollback()
         return []
+
+
+# ── For the month report ──────────────────────────────────────────────────────
+
+
+def _floor(kind: str, covered: int) -> int:
+    """Days needed to count as a habit over `covered` days: the four-week thresholds, scaled down
+    for part of a month (but never below 3)."""
+    base = MIN_DAYS_REPEAT if kind == "repeat" else MIN_DAYS
+    return max(3, -(-base * min(covered, WINDOW_DAYS) // WINDOW_DAYS))
+
+
+def for_month(s: Session, user_id: int, first: date, end: date) -> dict[str, Any]:
+    """Small habits in one calendar month (up to `end`: today, for the current month), each
+    against the month before. The same habits as the Small habits total: not ones I said are
+    fine or a need, and food delivery only when I said it's a treat."""
+    rules = _rules(s, user_id)
+    prev_last = first - timedelta(days=1)
+    prev_first = prev_last.replace(day=1)
+    covered = (end - first).days + 1
+    items = []
+    for key, item in _load(s, user_id, prev_first, end).items():
+        rule = rules.get(key)
+        if rule is not None and rule.status in ("need", "keep"):
+            continue
+        treats = rule is not None and rule.status == "limit" and rule.times_per_week is not None
+        if item.kind == "delivery" and not treats:
+            continue
+        now = sorted(p for d, p, _ in item.entries if first <= d <= end)
+        if not now:
+            continue
+        days = len({d for d, _, _ in item.entries if first <= d <= end})
+        typical = now[len(now) // 2]
+        limited = rule is not None and rule.status == "limit"
+        small = item.kind != "repeat" or typical <= REPEAT_MAX_PAISE
+        if not limited and not (days >= _floor(item.kind, covered) and small):
+            continue
+        spent = sum(now)
+        items.append(
+            {
+                "key": key,
+                "label": rule.label if rule is not None else item.label,
+                "kind": item.kind,
+                "days": days,
+                "times": len(now),
+                "spent_paise": spent,
+                "typical_paise": typical,
+                "previous_paise": sum(p for d, p, _ in item.entries if prev_first <= d <= prev_last),
+                "year_paise": _round10(spent * 365 // covered),
+                "rule": rule_json(rule) if rule is not None else None,
+            }
+        )
+    items.sort(key=lambda i: (i["spent_paise"], i["times"]), reverse=True)
+    spent = sum(i["spent_paise"] for i in items)
+    return {
+        "items": items[:6],
+        "more": max(len(items) - 6, 0),
+        "spent_paise": spent,
+        "previous_paise": sum(i["previous_paise"] for i in items),
+        "previous_label": prev_first.strftime("%B"),
+        "year_paise": _round10(spent * 365 // covered),
+    }

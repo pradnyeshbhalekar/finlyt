@@ -308,3 +308,29 @@ def test_quick_parse_knows_treats():
     assert first("thums up 40") == ("Thums Up", "Food")
     assert first("chocolate 30, chips 20") == ("Chocolate", "Food")
 
+
+
+def test_month_report_has_small_habits(client, me):
+    for n in range(10, 31):  # October: ice cream on 21 days, ₹10 each
+        spend(client, me, date(2026, 10, n).isoformat(), "Ice cream", 10)
+    for n in range(1, 21):  # November so far: 20 days, ₹20 each
+        spend(client, me, day(n), "Ice cream", 20)
+        spend(client, me, day(n), "Groceries", 150, "Groceries")
+    for n in range(1, 4):
+        spend(client, me, day(n), "Cold drink", 40)  # 3 days in 20: not a habit yet (5 needed)
+
+    r = client.get("/api/reports/month?month=2026-11").get_json()
+    small = r["habits"]
+    assert [i["key"] for i in small["items"]] == ["ice cream"]
+    ice = small["items"][0]
+    assert (ice["days"], ice["spent_paise"], ice["previous_paise"]) == (20, 400_00, 210_00)
+    assert ice["year_paise"] == 7300_00  # ₹400 in 20 days, over a year
+    assert small["previous_label"] == "October"
+    assert small["share"] == round(400 / (400 + 3000 + 120), 4)
+    assert "Small habits have come to ₹400, about ₹7,300 a year at this rate, most on ice cream." in r["notes"]
+
+    october = client.get("/api/reports/month?month=2026-10").get_json()["habits"]
+    assert october["items"][0]["days"] == 21 and october["items"][0]["previous_paise"] == 0
+
+    decide(client, "ice cream", status="keep")  # fine as it is: not counted
+    assert client.get("/api/reports/month?month=2026-11").get_json()["habits"]["items"] == []

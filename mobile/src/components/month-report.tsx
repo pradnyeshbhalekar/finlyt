@@ -1,7 +1,7 @@
 // "Where did my money go": a month report, the way Claude's personal finance answers it. A compact
 // card goes under Ask Finlyt's answer; the full report (its own screen) has every section: the
 // total and how it compares, each day, where it went against your usual, money in and what's left,
-// accounts, biggest spends, regular payments, money owed, and what's worth a look. Each number and
+// accounts, biggest spends, regular payments, small habits, money owed, and what's worth a look. Each number and
 // section has an ⓘ that explains it with this month's own figures (lib/report-help).
 import { router } from "expo-router";
 import { ArrowDownRight, ArrowUpRight, ChevronRight, Lightbulb, Repeat } from "lucide-react-native";
@@ -13,12 +13,23 @@ import { reportHelp, type HelpKey } from "@/lib/report-help";
 import type { MonthReport } from "@/lib/types";
 
 import { DailyBars, RankedBars, Ring } from "./charts";
+import { habitIcon } from "./habit-sheet";
 import { InfoButton, InfoSheet } from "./info";
 import { Icon, SectionLabel, Txt } from "./ui";
 
 function shortDay(iso: string): string {
   const [y, m, d] = iso.split("-").map(Number);
   return new Date(y, m - 1, d).toLocaleDateString("en-IN", { day: "numeric", month: "short" });
+}
+
+/** A habit against last month: more or less for a past month; while this month is still going,
+ *  last month's whole amount (a part of a month against a whole one would always look better). */
+function againstLastMonth(r: MonthReport, spent: number, previous: number): string {
+  const last = r.habits?.previous_label ?? r.last_month.label;
+  if (!previous) return `none in ${last}`;
+  if (r.current) return `${formatPaise(previous)} in all of ${last}`;
+  if (spent === previous) return `same as ${last}`;
+  return `${formatPaise(Math.abs(spent - previous))} ${spent > previous ? "more" : "less"} than ${last}`;
 }
 
 /** "₹900 more than October at this point", with an arrow; or nothing to compare with. */
@@ -296,6 +307,41 @@ export function ReportView({ report: r }: { report: MonthReport }) {
               <Txt weight="semibold">{formatPaise(x.typical_paise)}</Txt>
             </View>
           ))}
+        </Section>
+      ) : null}
+
+      {r.habits?.items.length ? (
+        <Section title="Small habits" info={explain("habits")}>
+          <Txt tone="muted" className="mb-1 text-sm">
+            {formatPaise(r.habits.spent_paise)}
+            {r.current ? " so far" : ""} · about {formatPaise(r.habits.year_paise)} a year at this rate
+          </Txt>
+          {r.habits.items.map((h) => (
+            <Pressable
+              key={h.key}
+              onPress={() => router.push("/habits")}
+              accessibilityRole="button"
+              className="flex-row items-center gap-3 py-2 active:opacity-70"
+            >
+              <Icon icon={habitIcon(h)} size={18} tone="muted" />
+              <View className="flex-1">
+                <Txt weight="medium" numberOfLines={1}>
+                  {h.label}
+                </Txt>
+                <Txt tone="muted" className="text-xs">
+                  {h.kind === "delivery" ? `${h.times} ${h.times === 1 ? "order" : "orders"}` : `${h.days} ${h.days === 1 ? "day" : "days"}`}
+                  {" · "}
+                  {againstLastMonth(r, h.spent_paise, h.previous_paise)}
+                </Txt>
+              </View>
+              <Txt weight="semibold">{formatPaise(h.spent_paise)}</Txt>
+            </Pressable>
+          ))}
+          {r.habits.more ? (
+            <Txt tone="muted" className="pt-1 text-xs">
+              and {r.habits.more} more on the Small habits screen
+            </Txt>
+          ) : null}
         </Section>
       ) : null}
 

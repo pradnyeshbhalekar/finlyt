@@ -18,6 +18,7 @@ export type HelpKey =
   | "paidFrom"
   | "biggest"
   | "regular"
+  | "habits"
   | "owed"
   | "notes";
 
@@ -162,6 +163,27 @@ export function reportHelp(r: MonthReport, key: HelpKey): HelpTopic {
           "The amount is what it usually costs. They're worth a look when you want to cut back.",
         ],
       };
+    case "habits": {
+      const h = r.habits;
+      const pct = h && h.share ? Math.round(h.share * 100) : 0;
+      return {
+        title: "Small habits",
+        lines: [
+          `Little things you bought on many days in ${month}, like ice cream, a cold drink, chai or cigarettes${
+            h ? `: ${formatPaise(h.spent_paise)} together${pct ? `, ${pct}% of your spending` : ""}` : ""
+          }.`,
+          ...(h
+            ? [
+                `At this rate that's about ${formatPaise(h.year_paise)} a year. Each one is compared with ${h.previous_label}${
+                  r.current ? ` (all of ${h.previous_label}, while ${month} is still going)` : ""
+                }.`,
+              ]
+            : []),
+          "Something on the watch list counts once it's bought on about 6 days in 4 weeks (fewer early in the month), anything else small on about 8. Groceries, rent, bills, medicine, getting around and meals never count, and neither do habits you've said are fine or a need.",
+          "Tap one to see it on the Small habits screen, where you can set a limit.",
+        ],
+      };
+    }
     case "owed":
       return {
         title: "Owed",
@@ -174,7 +196,7 @@ export function reportHelp(r: MonthReport, key: HelpKey): HelpTopic {
       return {
         title: "Worth a look",
         lines: [
-          "Things Finlyt noticed in this month: a category well above your usual, the month heading over budget, payments you haven't logged, and the like.",
+          "Things Finlyt noticed in this month: a category well above your usual, what small habits added up to, the month heading over budget, payments you haven't logged, and the like.",
           "They're only pointers. Ask Finlyt about any of them for more.",
         ],
       };

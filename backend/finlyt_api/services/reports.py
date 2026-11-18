@@ -2,7 +2,7 @@
 
 `month_report` is the full dashboard for one calendar month (IST): what I spent by category and
 against my usual, every day, money in and what's left, which accounts it left from, the biggest
-spends, regular payments, money owed both ways, the budget, and bank payments from SMS I haven't
+spends, regular payments, small habits, money owed both ways, the budget, and bank payments from SMS I haven't
 explained yet. Amounts are paise; `for_model` turns them into rupees for an AI to read.
 
 "Usual" is the average of the last three months that have anything logged (so a new user isn't
@@ -23,7 +23,7 @@ from ..errors import ApiError
 from ..models import Account, BankTxn, Budget, Category, Due, Expense, ExpensePayment, Settlement
 from ..money import rupees
 from ..timeutil import IST, ist_day_bounds, today_ist
-from . import debts, memory, planning
+from . import debts, habits, memory, planning
 
 USUAL_MONTHS = 3
 # Spending that happens once a month, not every day: never projected forward ("on pace").
@@ -284,6 +284,8 @@ def month_report(s: Session, user_id: int, first: date) -> dict[str, Any]:
     # Income for the month: bank credits marked as income, or else the salary Finlyt remembers.
     month_income = income or salary or 0
     committed = sum(c.monthly_paise for c in memory.active_commitments(s, user_id))
+    small = habits.for_month(s, user_id, first, end)
+    small["share"] = round(small["spent_paise"] / spent, 4) if spent else 0
     report: dict[str, Any] = {
         "month": first.isoformat()[:7],
         "label": first.strftime("%B %Y"),
@@ -322,6 +324,7 @@ def month_report(s: Session, user_id: int, first: date) -> dict[str, Any]:
         },
         "biggest": biggest,
         "regular": _regular(s, user_id, end, names),
+        "habits": small,
         "owed": {"to_me_paise": owed_to_me, "i_owe_paise": i_owe},
         "budget": {
             "budget_paise": budget.amount_paise if budget else None,
@@ -347,6 +350,15 @@ def _notes(r: dict[str, Any]) -> list[str]:
             verb = "is heading for" if r["current"] else "came to"
             notes.append(f"{c['name']} {verb} {rupees(c['pace_paise'])}, more than your usual {rupees(usual)}.")
             break
+    small = r.get("habits") or {}
+    if small.get("items"):
+        top = small["items"][0]
+        name = top["label"][:1].lower() + top["label"][1:] if top["kind"] == "treat" else top["label"]
+        verb = "have come to" if r["current"] else "came to"
+        notes.append(
+            f"Small habits {verb} {rupees(small['spent_paise'])}, about {rupees(small['year_paise'])} a year "
+            f"at this rate, most on {name}."
+        )
     if r["unlogged"]["count"]:
         n = r["unlogged"]["count"]
         notes.append(

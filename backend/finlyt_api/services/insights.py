@@ -330,8 +330,8 @@ TOOLS: list[Tool] = [
         "month_report",
         "The full picture of one month: total spent, by category with my usual (last 3 months) and the "
         "month's pace, last month at the same point, every day, money in (income, paybacks), what's "
-        "left, accounts paid from, biggest spends, regular payments, money owed both ways, budget, and "
-        "bank payments from SMS not logged yet. Use it for 'where did my money go', a monthly report, "
+        "left, accounts paid from, biggest spends, regular payments, small habits (little spends that "
+        "repeat, against last month), money owed both ways, budget, and bank payments from SMS not logged yet. Use it for 'where did my money go', a monthly report, "
         "'is that more than usual' and 'anything I'm missing'.",
         {
             "type": "object",

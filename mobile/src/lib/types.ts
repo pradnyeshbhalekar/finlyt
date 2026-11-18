@@ -453,6 +453,8 @@ export type MonthReport = {
   };
   biggest: { expense_id: number; description: string; day: string; category: string; my_share_paise: number }[];
   regular: { description: string; category: string; typical_paise: number; months: number; last_day: string }[];
+  /** Small habits this month, each against last month (older servers leave it out). */
+  habits?: MonthHabits;
   owed: { to_me_paise: number; i_owe_paise: number };
   budget: {
     budget_paise: number | null;
@@ -581,6 +583,31 @@ export type Habits = {
   total_month_paise: number;
   total_year_paise: number;
   update?: MemoryUpdate | null;
+};
+
+/** The month report's small habits: that calendar month, each against the month before. */
+export type MonthHabits = {
+  items: {
+    key: string;
+    label: string;
+    kind: Habit["kind"];
+    days: number;
+    times: number;
+    spent_paise: number;
+    typical_paise: number;
+    previous_paise: number;
+    year_paise: number;
+    rule: HabitRule | null;
+  }[];
+  /** Habits past the six shown. */
+  more: number;
+  spent_paise: number;
+  previous_paise: number;
+  previous_label: string;
+  /** A year at this month's rate. */
+  year_paise: number;
+  /** Of the month's spending. */
+  share: number;
 };
 
 /** A decision about a habit: the body of PUT /api/habits/<key>. */

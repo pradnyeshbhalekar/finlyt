@@ -109,7 +109,7 @@ All routes are under `/api` and use JSON. Every route needs `Authorization: Bear
 | `GET /api/txns` · `POST /api/txns/:id/resolve` | 5 | List pending txns · mark one as transfer, ignore or income |
 | `GET /api/dues` · `POST /api/dues/settle` | 6 | What each person owes me · settle by cash or with a credit txn |
 | `POST /api/ask` | — | Ask Finlyt: `{text, thread_id?}` in, answer and `thread_id` out. The chat is saved; older apps can send `messages` instead (not saved) |
-| `GET /api/reports/month?month=` | — | The month report: by category vs usual, each day, money in and left, accounts, biggest, regular payments, owed, unlogged SMS |
+| `GET /api/reports/month?month=` | — | The month report: by category vs usual, each day, money in and left, accounts, biggest, regular payments, small habits (that month, each against the month before), owed, unlogged SMS |
 | `GET /api/memory` · `PUT/DELETE /api/memory/income` · `POST/PATCH/DELETE /api/memory/commitments` · `DELETE /api/memory/notes/:id` | — | What Finlyt remembers, to see and correct |
 | `PUT /api/plan/check-in` | 3b | The weekly check-in day (Monday 0 to Sunday 6). The time stays on the phone |
 | `GET /api/ask/threads` · `GET/DELETE /api/ask/threads/:id` | — | Past chats (newest first, with `keep_days`) · one chat's messages · delete it. Chats untouched for 10 days are deleted on any Ask call |
